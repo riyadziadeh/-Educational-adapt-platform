@@ -119,7 +119,7 @@ if st.button("🚀 ابدأ تكييف ورقة العمل بالذكاء الا
     ):
       try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
 
         prompt = f"""
         أنت خبير تربوي متخصص في التربية الخاصة وتكييف المناهج.
