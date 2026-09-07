@@ -1,14 +1,25 @@
 import io
 import streamlit as st
 
-# محاولة استيراد مكتبات التصدير لملفات Word و PowerPoint
+# استيراد المكتبات
 try:
   from docx import Document
   from pptx import Presentation
-
   EXPORT_LIBS_AVAILABLE = True
 except ImportError:
   EXPORT_LIBS_AVAILABLE = False
+
+try:
+  import pypdf
+  PDF_LIB_AVAILABLE = True
+except ImportError:
+  PDF_LIB_AVAILABLE = False
+
+try:
+  import google.generativeai as genai
+  AI_AVAILABLE = True
+except ImportError:
+  AI_AVAILABLE = False
 
 st.set_page_config(
     page_title="المنصة الذكية لتكييف أوراق العمل",
@@ -27,30 +38,22 @@ st.markdown(
 )
 
 st.title("📚 المنصة الذكية لتكييف وتبسيط أوراق العمل")
-st.markdown(
-    "**النظام الوطني المتقدم لتكييف المناهج المدرسية (الصف 1 - 9) للطلاب ذوي"
-    " الحالات الخاصة.**"
-)
+st.markdown("**النظام الوطني المتقدم لتكييف المناهج المدرسية المدعوم بالذكاء الاصطناعي.**")
 st.markdown("---")
 
 with st.sidebar:
+  st.header("🔑 ربط الذكاء الاصطناعي")
+  api_key = st.text_input("أدخل مفتاح Gemini API هنا ليعمل الذكاء الاصطناعي:", type="password")
+  st.markdown("[احصل على مفتاح مجاني من Google AI Studio](https://aistudio.google.com/app/apikey)")
+  st.markdown("---")
+  
   st.header("⚙️ إعدادات ورقة العمل")
-  language = st.selectbox(
-      "لغة ورقة العمل الأساسية:", ["اللغة العربية", "اللغة الإنجليزية"]
-  )
+  language = st.selectbox("لغة ورقة العمل الأساسية:", ["اللغة العربية", "اللغة الإنجليزية"])
   grade_level = st.selectbox(
       "الصف الدراسي:",
-      [
-          "الصف الأول الأساسي",
-          "الصف الثاني الأساسي",
-          "الصف الثالث الأساسي",
-          "الصف الرابع الأساسي",
-          "الصف الخامس الأساسي",
-          "الصف السادس الأساسي",
-          "الصف السابع الأساسي",
-          "الصف الثامن الأساسي",
-          "الصف التاسع الأساسي",
-      ],
+      ["الصف الأول الأساسي", "الصف الثاني الأساسي", "الصف الثالث الأساسي", 
+       "الصف الرابع الأساسي", "الصف الخامس الأساسي", "الصف السادس الأساسي", 
+       "الصف السابع الأساسي", "الصف الثامن الأساسي", "الصف التاسع الأساسي"]
   )
   subject = st.text_input("المادة الدراسية (مثال: رياضيات، علوم)")
 
@@ -69,122 +72,125 @@ with st.sidebar:
           "لغة أجنبية - اختلاف لغة الدارس (ELL)",
           "مشاكل نطقية أو سمعية (Speech/Hearing Impairment)",
           "تأخر نمائي / بطء تعلم (Borderline Intellectual Functioning)",
-          "إجهاد صحي مزمن (Chronic Fatigue / Medical Condition)",
           "صعوبة حركية كتابية (Dysgraphia)",
       ],
   )
 
 st.subheader("📝 مدخلات ورقة العمل")
-
-# خيار طريقة الإدخال: (كتابة النص أو رفع ملف من الجهاز)
 input_method = st.radio(
     "اختر طريقة إدخال ورقة العمل:",
-    ["كتابة أو لصق النص مباشرة", "رفع ملف من الجهاز (PDF أو صورة)"],
+    ["كتابة أو لصق النص مباشرة", "رفع ملف PDF من الجهاز"],
 )
 
-raw_text = ""
-uploaded_file = None
+extracted_text = ""
 
 if input_method == "كتابة أو لصق النص مباشرة":
-  raw_text = st.text_area(
+  extracted_text = st.text_area(
       "الصق محتوى ورقة العمل الأصلية هنا:",
-      placeholder="اكتب الأسئلة أو التمارين هنا...",
+      placeholder="اكتب الأسئلة أو التمارين هنا ليتم تكييفها بالذكاء الاصطناعي...",
       height=150,
   )
 else:
-  uploaded_file = st.file_uploader(
-      "اختر ملفاً من جهازك (PDF, PNG, JPG):", type=["pdf", "png", "jpg", "jpeg"]
-  )
+  uploaded_file = st.file_uploader("اختر ملف PDF من جهازك:", type=["pdf"])
   if uploaded_file is not None:
-    raw_text = f"تم رفع الملف بنجاح: {uploaded_file.name}"
-    st.success(f"تم رفع الملف ({uploaded_file.name}) من الجهاز وجاهز للمعالجة!")
+    if PDF_LIB_AVAILABLE:
+      try:
+        reader = pypdf.PdfReader(uploaded_file)
+        for page in reader.pages:
+          text = page.extract_text()
+          if text:
+            extracted_text += text + "\n"
+        st.success(f"تم قراءة نص الملف ({uploaded_file.name}) بنجاح!")
+      except Exception as e:
+        st.error("حدث خطأ أثناء قراءة الملف.")
+    else:
+      st.error("مكتبة قراءة الـ PDF غير متوفرة. تأكد من إضافتها.")
 
 st.markdown("---")
 
-if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
-  if not raw_text.strip():
+if st.button("🚀 ابدأ تكييف ورقة العمل بالذكاء الاصطناعي"):
+  if not api_key:
+    st.error("⚠️ الرجاء وضع مفتاح الذكاء الاصطناعي (API Key) في القائمة الجانبية أولاً.")
+  elif not extracted_text.strip():
     st.warning("⚠️ يرجى إدخال النص أو رفع ملف ورقة العمل أولاً.")
+  elif not AI_AVAILABLE:
+    st.error("⚠️ مكتبة الذكاء الاصطناعي غير مثبتة.")
   else:
-    adapted_output = f"""
-تقرير تكييف ورقة العمل التعليمية
-----------------------------------------
-• الصف الدراسي: {grade_level}
-• المادة: {subject if subject else 'عامة'}
-• الحالة / التحدي المدعوم: {student_condition}
-• اللغة: {language}
+    with st.spinner("🤖 يقوم الذكاء الاصطناعي الآن بقراءة وتحليل وتكييف ورقة العمل... الرجاء الانتظار ثواني..."):
+      try:
+        # إعداد الذكاء الاصطناعي
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # هندسة الأوامر (Prompt Engineering) لتوجيه الذكاء الاصطناعي
+        prompt = f"""
+        أنت خبير تربوي متخصص في التربية الخاصة وتكييف المناهج.
+        المطلوب منك تكييف وتبسيط ورقة العمل التالية لتناسب قدرات طالب في {grade_level} يعاني من: {student_condition}.
+        المادة الدراسية: {subject}.
+        لغة الإخراج المطلوبة: {language}.
+        
+        النص الأصلي لورقة العمل:
+        {extracted_text}
+        
+        التعليمات الصارمة:
+        1. أعد صياغة الأسئلة لتكون واضحة، مباشرة، ومناسبة تماماً لحالة الطالب.
+        2. استخدم أسلوباً مشجعاً وهادئاً في صياغة التعليمات.
+        3. قسم الأسئلة الطويلة أو المعقدة إلى خطوات بسيطة ومحددة (Checklist).
+        4. لا تذكر في إجابتك أنك ذكاء اصطناعي، أعطني فقط ورقة العمل النهائية المكيفة والمنسقة بشكل احترافي وجاهز للطباعة.
+        """
+        
+        response = model.generate_content(prompt)
+        adapted_output = response.text
+        
+        st.success("✨ تمت عملية التكييف الذكي بنجاح!")
+        st.markdown("### 📄 ورقة العمل المكيفة بالذكاء الاصطناعي:")
+        st.info(adapted_output)
+        
+        # أزرار التحميل
+        st.markdown("---")
+        st.subheader("📥 تحميل ورقة العمل المكيفة بجميع الصيغ")
+        col1, col2, col3 = st.columns(3)
 
-تعليمات هادئة للطالب:
-1. خذ وقتك كاملاً في القراءة، وكل سؤال سنحله معاً بهدوء وخطوة بخطوة.
-2. تم تبسيط العبارات البصرية وتنظيم المهام لتناسب قدرات الطالب الخاصة.
+        with col1:
+          st.download_button(
+              label="📄 تحميل نصي (TXT)",
+              data=adapted_output,
+              file_name=f"AI_Worksheet_{grade_level}.txt",
+              mime="text/plain",
+          )
 
-الأسئلة المكيفة:
-- السؤال الأول (مبسط ومباشر): [تم إعادة صياغة الأسئلة وتقديم خيارات واضحة وتلميح يسهل الحل].
-- مصدر ورقة العمل: {uploaded_file.name if uploaded_file else 'إدخال نصي مباشر'}
-"""
+        with col2:
+          if EXPORT_LIBS_AVAILABLE:
+            doc = Document()
+            doc.add_heading("ورقة عمل مكيفة (بالذكاء الاصطناعي)", 0)
+            doc.add_paragraph(adapted_output)
+            doc_io = io.BytesIO()
+            doc.save(doc_io)
+            doc_io.seek(0)
+            st.download_button(
+                label="📝 تحميل Word",
+                data=doc_io,
+                file_name=f"AI_Worksheet_{grade_level}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
 
-    st.success("✨ تم تكييف ورقة العمل بنجاح ودقة عالية!")
-    st.markdown("### 📄 ورقة العمل المبسطة والمعدلة للطالب:")
-    st.info(adapted_output)
-
-    st.markdown("### 👩‍🏫 دليل المعلم التربوي السريع:")
-    st.write(
-        "• ينصح باستخدام الوسائل المحسوسة أو الدعم البصري المباشر والتعزيز"
-        " الإيجابي الفوري عند إنجاز كل خطوة.\n• تم تبسيط المحتوى للحد من أي"
-        " توتر أو حمل معرفي زائد."
-    )
-
-    # قسم خيارات التحميل المتعددة بعد التكييف
-    st.markdown("---")
-    st.subheader("📥 تحميل ورقة العمل المكيفة بجميع الصيغ")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-      st.download_button(
-          label="📄 تحميل كملف نصي (TXT)",
-          data=adapted_output,
-          file_name=f"Worksheet_{grade_level}.txt",
-          mime="text/plain",
-      )
-
-    with col2:
-      if EXPORT_LIBS_AVAILABLE:
-        doc = Document()
-        doc.add_heading("المنصة الذكية - ورقة عمل مكيفة", 0)
-        doc.add_paragraph(adapted_output)
-        doc_io = io.BytesIO()
-        doc.save(doc_io)
-        doc_io.seek(0)
-        st.download_button(
-            label="📝 تحميل كملف Word (DOCX)",
-            data=doc_io,
-            file_name=f"Worksheet_{grade_level}.docx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            ),
-        )
-      else:
-        st.info("مكتبة Word غير متوفرة.")
-
-    with col3:
-      if EXPORT_LIBS_AVAILABLE:
-        prs = Presentation()
-        slide_layout = prs.slide_layouts[1]
-        slide = prs.slides.add_slide(slide_layout)
-        slide.shapes.title.text = (
-            f"ورقة عمل مكيفة - {grade_level} ({student_condition})"
-        )
-        slide.placeholders[1].text = adapted_output[:500]
-        ppt_io = io.BytesIO()
-        prs.save(ppt_io)
-        ppt_io.seek(0)
-        st.download_button(
-            label="📊 تحميل كملف PowerPoint (PPTX)",
-            data=ppt_io,
-            file_name=f"Worksheet_{grade_level}.pptx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            ),
-        )
-      else:
-        st.info("مكتبة PowerPoint غير متوفرة.")
+        with col3:
+          if EXPORT_LIBS_AVAILABLE:
+            prs = Presentation()
+            slide_layout = prs.slide_layouts[1]
+            slide = prs.slides.add_slide(slide_layout)
+            slide.shapes.title.text = f"ورقة عمل مكيفة - {grade_level}"
+            # وضع جزء من النص في البوربوينت لعدم تجاوز حجم الشريحة
+            slide.placeholders[1].text = adapted_output[:700] + "\n...(اقرأ الباقي في ملف الوورد)"
+            ppt_io = io.BytesIO()
+            prs.save(ppt_io)
+            ppt_io.seek(0)
+            st.download_button(
+                label="📊 تحميل PowerPoint",
+                data=ppt_io,
+                file_name=f"AI_Worksheet_{grade_level}.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            )
+            
+      except Exception as e:
+        st.error(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: تأكد من صحة مفتاح الـ API. تفاصيل: {e}")
