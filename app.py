@@ -21,6 +21,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# سحب المفتاح من أسرار المنصة السحابية تلقائياً
+api_key = None
+try:
+  if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+  pass
+
 st.title("📚 المنصة الذكية لتكييف وتبسيط أوراق العمل")
 st.markdown(
     "**النظام الوطني المتقدم لتكييف المناهج المدرسية المدعوم بالذكاء الاصطناعي.**"
@@ -28,19 +36,6 @@ st.markdown(
 st.markdown("---")
 
 with st.sidebar:
-  st.header("🔑 ربط الذكاء الاصطناعي")
-  user_api_key = st.text_input(
-      "أدخل مفتاح Gemini API الخاص بك:",
-      type="password",
-      placeholder="أدخل المفتاح هنا...",
-  )
-  st.markdown(
-      "[احصل على مفتاح مجاني من Google"
-      " AI Studio](https://aistudio.google.com/app/apikey)",
-      unsafe_allow_html=True,
-  )
-
-  st.markdown("---")
   st.header("⚙️ إعدادات ورقة العمل")
   language = st.selectbox(
       "لغة ورقة العمل الأساسية:", ["اللغة العربية", "اللغة الإنجليزية"]
@@ -110,9 +105,10 @@ else:
 st.markdown("---")
 
 if st.button("🚀 ابدأ تكييف ورقة العمل بالذكاء الاصطناعي"):
-  if not user_api_key.strip():
-    st.warning(
-        "⚠️ يرجى إدخال مفتاح Gemini API في القائمة الجانبية لكي يعمل النظام."
+  if not api_key:
+    st.error(
+        "⚠️ يرجى إضافة المفتاح مؤقتاً في إعدادات المنصة (Secrets) ليعمل النظام"
+        " بسلاسة."
     )
   elif not extracted_text.strip():
     st.warning("⚠️ يرجى إدخال النص أو رفع ملف ورقة العمل أولاً.")
@@ -122,9 +118,8 @@ if st.button("🚀 ابدأ تكييف ورقة العمل بالذكاء الا
         " الانتظار..."
     ):
       try:
-        genai.configure(api_key=user_api_key.strip())
-        # تم تحديث النموذج هنا ليعمل مباشرة وبدون أخطاء
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
 
         prompt = f"""
         أنت خبير تربوي متخصص في التربية الخاصة وتكييف المناهج.
