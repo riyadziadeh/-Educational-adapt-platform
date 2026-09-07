@@ -1,4 +1,14 @@
+import io
 import streamlit as st
+
+# محاولة استيراد مكتبات التصدير لملفات Word و PowerPoint
+try:
+  from docx import Document
+  from pptx import Presentation
+
+  EXPORT_LIBS_AVAILABLE = True
+except ImportError:
+  EXPORT_LIBS_AVAILABLE = False
 
 st.set_page_config(
     page_title="المنصة الذكية لتكييف أوراق العمل",
@@ -90,6 +100,7 @@ if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
 
 الأسئلة المكيفة:
 - السؤال الأول (مبسط ومباشر): [تم إعادة صياغة الأسئلة وتقديم خيارات واضحة وتلميح يسهل الحل].
+- محتوى نص ورقة العمل الأساسي المدخل: {raw_text[:200]}...
 """
 
     st.success("✨ تم تكييف ورقة العمل بنجاح ودقة عالية!")
@@ -103,11 +114,64 @@ if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
         " توتر أو حمل معرفي زائد."
     )
 
+    # قسم خيارات التحميل المتعددة
     st.markdown("---")
-    st.subheader("📥 تحميل ورقة العمل المكيفة")
-    st.download_button(
-        label="تحميل ورقة العمل كملف نصي جاهز للطباعة",
-        data=adapted_output,
-        file_name=f"Adapted_Worksheet_{grade_level}.txt",
-        mime="text/plain",
-    )
+    st.subheader("📥 تحميل ورقة العمل المكيفة بجميع الصيغ")
+
+    col1, col2, col3 = st.columns(3)
+
+    # 1. تحميل كملف نصي (TXT)
+    with col1:
+      st.download_button(
+          label="📄 تحميل كملف نصي (TXT)",
+          data=adapted_output,
+          file_name=f"Worksheet_{grade_level}.txt",
+          mime="text/plain",
+      )
+
+    # 2. تحميل كملف Word (DOCX)
+    with col2:
+      if EXPORT_LIBS_AVAILABLE:
+        doc = Document()
+        doc.add_heading("المنصة الذكية - ورقة عمل مكيفة", 0)
+        doc.add_paragraph(adapted_output)
+        doc_io = io.BytesIO()
+        doc.save(doc_io)
+        doc_io.seek(0)
+
+        st.download_button(
+            label="📝 تحميل كملف Word (DOCX)",
+            data=doc_io,
+            file_name=f"Worksheet_{grade_level}.docx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ),
+        )
+      else:
+        st.info("مكتبة Word غير متوفرة حالياً في البيئة.")
+
+    # 3. تحميل كملف PowerPoint (PPTX)
+    with col3:
+      if EXPORT_LIBS_AVAILABLE:
+        prs = Presentation()
+        slide_layout = prs.slide_layouts[1]
+        slide = prs.slides.add_slide(slide_layout)
+        slide.shapes.title.text = (
+            f"ورقة عمل مكيفة - {grade_level} ({student_condition})"
+        )
+        slide.placeholders[1].text = adapted_output[:500]
+
+        ppt_io = io.BytesIO()
+        prs.save(ppt_io)
+        ppt_io.seek(0)
+
+        st.download_button(
+            label="📊 تحميل كملف PowerPoint (PPTX)",
+            data=ppt_io,
+            file_name=f"Worksheet_{grade_level}.pptx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            ),
+        )
+      else:
+        st.info("مكتبة PowerPoint غير متوفرة حالياً في البيئة.")
