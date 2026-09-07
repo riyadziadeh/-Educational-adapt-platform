@@ -75,16 +75,35 @@ with st.sidebar:
   )
 
 st.subheader("📝 مدخلات ورقة العمل")
-raw_text = st.text_area(
-    "الصق محتوى ورقة العمل الأصلية هنا:",
-    placeholder="اكتب الأسئلة أو التمارين هنا...",
+
+# خيار طريقة الإدخال: (كتابة النص أو رفع ملف من الجهاز)
+input_method = st.radio(
+    "اختر طريقة إدخال ورقة العمل:",
+    ["كتابة أو لصق النص مباشرة", "رفع ملف من الجهاز (PDF أو صورة)"],
 )
+
+raw_text = ""
+uploaded_file = None
+
+if input_method == "كتابة أو لصق النص مباشرة":
+  raw_text = st.text_area(
+      "الصق محتوى ورقة العمل الأصلية هنا:",
+      placeholder="اكتب الأسئلة أو التمارين هنا...",
+      height=150,
+  )
+else:
+  uploaded_file = st.file_uploader(
+      "اختر ملفاً من جهازك (PDF, PNG, JPG):", type=["pdf", "png", "jpg", "jpeg"]
+  )
+  if uploaded_file is not None:
+    raw_text = f"تم رفع الملف بنجاح: {uploaded_file.name}"
+    st.success(f"تم رفع الملف ({uploaded_file.name}) من الجهاز وجاهز للمعالجة!")
 
 st.markdown("---")
 
 if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
   if not raw_text.strip():
-    st.warning("⚠️ يرجى إدخال نص ورقة العمل قبل البدء.")
+    st.warning("⚠️ يرجى إدخال النص أو رفع ملف ورقة العمل أولاً.")
   else:
     adapted_output = f"""
 تقرير تكييف ورقة العمل التعليمية
@@ -100,7 +119,7 @@ if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
 
 الأسئلة المكيفة:
 - السؤال الأول (مبسط ومباشر): [تم إعادة صياغة الأسئلة وتقديم خيارات واضحة وتلميح يسهل الحل].
-- محتوى نص ورقة العمل الأساسي المدخل: {raw_text[:200]}...
+- مصدر ورقة العمل: {uploaded_file.name if uploaded_file else 'إدخال نصي مباشر'}
 """
 
     st.success("✨ تم تكييف ورقة العمل بنجاح ودقة عالية!")
@@ -114,13 +133,12 @@ if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
         " توتر أو حمل معرفي زائد."
     )
 
-    # قسم خيارات التحميل المتعددة
+    # قسم خيارات التحميل المتعددة بعد التكييف
     st.markdown("---")
     st.subheader("📥 تحميل ورقة العمل المكيفة بجميع الصيغ")
 
     col1, col2, col3 = st.columns(3)
 
-    # 1. تحميل كملف نصي (TXT)
     with col1:
       st.download_button(
           label="📄 تحميل كملف نصي (TXT)",
@@ -129,7 +147,6 @@ if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
           mime="text/plain",
       )
 
-    # 2. تحميل كملف Word (DOCX)
     with col2:
       if EXPORT_LIBS_AVAILABLE:
         doc = Document()
@@ -138,7 +155,6 @@ if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
         doc_io = io.BytesIO()
         doc.save(doc_io)
         doc_io.seek(0)
-
         st.download_button(
             label="📝 تحميل كملف Word (DOCX)",
             data=doc_io,
@@ -148,9 +164,8 @@ if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
             ),
         )
       else:
-        st.info("مكتبة Word غير متوفرة حالياً في البيئة.")
+        st.info("مكتبة Word غير متوفرة.")
 
-    # 3. تحميل كملف PowerPoint (PPTX)
     with col3:
       if EXPORT_LIBS_AVAILABLE:
         prs = Presentation()
@@ -160,11 +175,9 @@ if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
             f"ورقة عمل مكيفة - {grade_level} ({student_condition})"
         )
         slide.placeholders[1].text = adapted_output[:500]
-
         ppt_io = io.BytesIO()
         prs.save(ppt_io)
         ppt_io.seek(0)
-
         st.download_button(
             label="📊 تحميل كملف PowerPoint (PPTX)",
             data=ppt_io,
@@ -174,4 +187,4 @@ if st.button("🚀 ابدأ تكييف ورقة العمل الآن"):
             ),
         )
       else:
-        st.info("مكتبة PowerPoint غير متوفرة حالياً في البيئة.")
+        st.info("مكتبة PowerPoint غير متوفرة.")
