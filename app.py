@@ -21,6 +21,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# سحب المفتاح سرّاً من إعدادات المنصة (Secrets) التي حفظتها قبل قليل
+api_key = None
+try:
+  if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+  pass
+
 st.title("📚 المنصة الذكية لتكييف وتبسيط أوراق العمل")
 st.markdown(
     "**النظام الوطني المتقدم لتكييف المناهج المدرسية المدعوم بالذكاء الاصطناعي.**"
@@ -28,16 +36,6 @@ st.markdown(
 st.markdown("---")
 
 with st.sidebar:
-  st.header("🔑 ربط الذكاء الاصطناعي")
-  api_key = st.text_input(
-      "أدخل مفتاح Gemini API هنا ليعمل الذكاء الاصطناعي:", type="password"
-  )
-  st.markdown(
-      "[احصل على مفتاح مجاني من Google AI"
-      " Studio](https://aistudio.google.com/app/apikey)"
-  )
-  st.markdown("---")
-
   st.header("⚙️ إعدادات ورقة العمل")
   language = st.selectbox(
       "لغة ورقة العمل الأساسية:", ["اللغة العربية", "اللغة الإنجليزية"]
@@ -109,7 +107,8 @@ st.markdown("---")
 if st.button("🚀 ابدأ تكييف ورقة العمل بالذكاء الاصطناعي"):
   if not api_key:
     st.error(
-        "⚠️ الرجاء وضع مفتاح الذكاء الاصطناعي (API Key) في القائمة الجانبية أولاً."
+        "⚠️ يرجى التأكد من إضافة مفتاح الـ API في قسم Secrets في إعدادات التطبيق"
+        " السحابية."
     )
   elif not extracted_text.strip():
     st.warning("⚠️ يرجى إدخال النص أو رفع ملف ورقة العمل أولاً.")
@@ -147,7 +146,7 @@ if st.button("🚀 ابدأ تكييف ورقة العمل بالذكاء الا
 
         st.markdown("---")
         st.subheader("📥 تحميل ورقة العمل المكيفة بجميع الصيغ")
-        col1, col2, col3 = st.columns3() if hasattr(st, 'columns3') else st.columns(3)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
           st.download_button(
@@ -194,7 +193,4 @@ if st.button("🚀 ابدأ تكييف ورقة العمل بالذكاء الا
           )
 
       except Exception as e:
-        st.error(
-            f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: تأكد من صحة مفتاح الـ API."
-            f" تفاصيل: {e}"
-        )
+        st.error(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: تفاصيل: {e}")
