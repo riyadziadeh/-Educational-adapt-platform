@@ -1,29 +1,8 @@
 import io
-import subprocess
-import sys
-
-# تثبيت المكتبات تلقائياً من داخل الكود لتجنب مشاكل غيت هاب والهاتف
-try:
-  import google.generativeai as genai
-  import pypdf
-  from docx import Document
-  from pptx import Presentation
-except ImportError:
-  subprocess.check_call([
-      sys.executable,
-      "-m",
-      "pip",
-      "install",
-      "google-generativeai",
-      "pypdf",
-      "python-docx",
-      "python-pptx",
-  ])
-  import google.generativeai as genai
-  import pypdf
-  from docx import Document
-  from pptx import Presentation
-
+import google.generativeai as genai
+import pypdf
+from docx import Document
+from pptx import Presentation
 import streamlit as st
 
 st.set_page_config(
@@ -168,7 +147,7 @@ if st.button("🚀 ابدأ تكييف ورقة العمل بالذكاء الا
 
         st.markdown("---")
         st.subheader("📥 تحميل ورقة العمل المكيفة بجميع الصيغ")
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3 = st.columns3() if hasattr(st, 'columns3') else st.columns(3)
 
         with col1:
           st.download_button(
