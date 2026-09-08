@@ -1,12 +1,16 @@
 import os
+import io
 import streamlit as st
 import google.generativeai as genai
+from docx import Document
+from pptx import Presentation
+from fpdf import FPDF
 
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي", layout="centered")
 
 st.title("📚 نظام تكييف أوراق العمل التربوية")
-st.write("قم بإدخال تفاصيل ورقة العمل وسيتم تكييفها تلقائياً بما يتناسب مع الفروق الفردية والبيئة التعليمية.")
+st.write("قم بإدخال تفاصيل ورقة العمل وسيتم تكييفها تلقائياً مع خيارات التحميل المتعددة.")
 
 # إدخال مفتاح الـ API
 api_key = st.text_input("أدخل مفتاح Google Gemini API Key:", type="password")
@@ -69,6 +73,46 @@ if api_key:
 
     original_content = st.text_area("الصق محتوى ورقة العمل الأصلية هنا:")
 
+    # دوال توليد الملفات للتحميل
+    def create_word_file(text):
+        doc = Document()
+        doc.add_heading('ورقة العمل المطورة (التربية الخاصة)', 0)
+        doc.add_paragraph(text)
+        bio = io.BytesIO()
+        doc.save(bio)
+        bio.seek(0)
+        return bio
+
+    def create_ppt_file(text):
+        prs = Presentation()
+        slide_layout = prs.slide_layouts[1] # شريحة عنوان ومحتوى
+        slide = prs.slides.add_slide(slide_layout)
+        title = slide.shapes.title
+        subtitle = slide.placeholders[1]
+        
+        title.text = "ورقة العمل المطورة"
+        # تقصير النص للشريحة إذا كان طويلاً
+        subtitle.text = text[:500] + "..." if len(text) > 500 else text
+        
+        bio = io.BytesIO()
+        prs.save(bio)
+        bio.seek(0)
+        return bio
+
+    def create_pdf_file(text):
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Arial", size=12)
+        # معالجة النصوص العربية المبسطة للـ PDF الافتراضي
+        safe_text = text.encode('latin-1', 'replace').decode('latin-1')
+        for line in safe_text.split('\n'):
+            pdf.multi_cell(0, 10, line)
+        
+        bio = io.BytesIO(pdf.output(dest='S').encode('latin-1'))
+        bio.seek(0)
+        return bio
+
     if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀"):
         if not original_content.strip():
             st.warning("الرجاء إدخال محتوى ورقة العمل الأصلية أولاً.")
@@ -89,9 +133,45 @@ if api_key:
                 try:
                     model = genai.GenerativeModel(MODEL_NAME)
                     response = model.generate_content(prompt)
+                    adapted_text = response.text
+                    
                     st.success("تم تكييف ورقة العمل بنجاح!")
                     st.markdown("### ورقة العمل المطورة:")
-                    st.markdown(response.text)
+                    st.markdown(adapted_text)
+                    
+                    # خيارات التحميل المتعددة
+                    st.markdown("---")
+                    st.subheader("📥 تحميل ورقة العمل المطورة:")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        word_data = create_word_file(adapted_text)
+                        st.download_button(
+                            label="تحميل Word (.docx)",
+                            data=word_data,
+                            file_name="Adapted_Worksheet.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                        
+                    with col2:
+                        ppt_data = create_ppt_file(adapted_text)
+                        st.download_button(
+                            label="تحميل PowerPoint (.pptx)",
+                            data=ppt_data,
+                            file_name="Adapted_Worksheet.pptx",
+                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        )
+                        
+                    with col3:
+                        pdf_data = create_pdf_file(adapted_text)
+                        st.download_button(
+                            label="تحميل PDF (.pdf)",
+                            data=pdf_data,
+                            file_name="Adapted_Worksheet.pdf",
+                            mime="application/pdf"
+                        )
+
                 except Exception as e:
                     st.error(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: {str(e)}")
 else:
