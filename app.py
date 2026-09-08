@@ -1,129 +1,198 @@
-import io
 import os
+import io
 import streamlit as st
+import google.generativeai as genai
 from docx import Document
 from pptx import Presentation
+from fpdf import FPDF
+import pypdf
 
-# إعدادات الصفحة الأساسية
-st.set_page_config(
-    page_title="نظام تكييف أوراق العمل التربوية", page_icon="📚", layout="centered"
-)
+# إعداد صفحة ستريمليت
+st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي", layout="centered")
 
-# عنوان التطبيق الواجهة
-st.markdown(
-    "<h1 style='text-align: center; color: #2563eb;'>نظام تكييف أوراق العمل"
-    " التربوية</h1>",
-    unsafe_allow_html=True,
-)
-st.markdown(
-    "<h3 style='text-align: center; color: #64748b;'>Educational Worksheet"
-    " Adaptation System</h3>",
-    unsafe_allow_html=True,
-)
-st.write("---")
+st.title("📚 نظام تكييف أوراق العمل التربوية")
+st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً مع خيارات التحميل المتعددة.")
 
-# مدخلات المستخدم الأساسية
-subject = st.text_input("المبحث / المادة الدراسية:")
-topic = st.text_input("عنوان الدرس أو المهارة:")
-student_level = st.selectbox(
-    "مستوى الطالب / الفئة المستهدفة:",
-    [
-        "تكييف لذوي الإعاقة الفكرية البسيطة",
-        "تكييف لاضطراب طيف التوحد",
-        "تكييف لصعوبات التعلم",
-        "تكييف للدمج الشامل",
-    ],
-)
+# جلب مفتاح الـ API بأمان
+api_key = None
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+except:
+    pass
 
-# قسم خاص بتكامل Canva
-st.write("---")
-st.subheader("🎨 تصميم وتصدير عبر Canva")
-canva_template_url = st.text_input(
-    "أدخل رابط قالب Canva التفاعلي (اختياري):",
-    placeholder="https://www.canva.com/design/...",
-)
+if not api_key:
+    api_key = st.text_input("أدخل مفتاح Google Gemini API Key:", type="password")
 
-# زر المعالجة والتكييف
-if st.button("تكييف ورقة العمل بالذكاء الاصطناعي"):
-  if subject and topic:
-    with st.spinner("جاري تكييف المادة وتوليد الملفات التربوية..."):
-      try:
-        # محاكاة وتوليد المحتوى المكيّف بشكل آمن نصياً ورياضياً
-        adapted_content = f"""
-        تقرير تكييف ورقة العمل التربوية:
-        - المبحث: {subject}
-        - المهارة: {topic}
-        - الفئة المستهدفة: {student_level}
+if api_key:
+    genai.configure(api_key=api_key)
+    MODEL_NAME = "gemini-3.6-flash"
+
+    grades = [
+        "الصف الأول", "الصف الثاني", "الصف الثالث", "الصف الرابع", 
+        "الصف الخامس", "الصف السادس", "الصف السابع", "الصف الثامن", "الصف التاسع"
+    ]
+
+    educational_systems = [
+        "وطني (National)", 
+        "دولي (International)"
+    ]
+
+    jordan_governorates = [
+        "العاصمة (عمان)", "إربد", "الزرقاء", "البلقاء", "المفرق", 
+        "الكرك", "مادبا", "جرش", "عجلون", "معان", "الطفيلة", "العقبة"
+    ]
+
+    special_conditions_categories = {
+        "1. الإعاقات الحسية والجسدية": [
+            "الإعاقة البصرية (كف تام أو ضعف بصر شديد / بريل ومطبوعات كبيرة)",
+            "الإعاقة السمعية (صمم تام أو ضعف سمعي بحاجة لمعينات/إشارة)",
+            "الإعاقة الحركية أو الجسدية (شلل، ضمور عضلات، بتر أطراف، تشوهات)",
+            "الإعاقة الحسية المزدوجة (الصم-المكفوفين)"
+        ],
+        "2. الاضطرابات النمائية وصعوبات التعلم": [
+            "صعوبات التعلم المحددة (ديسليكسيا، عسر كتابة، صعوبة حساب)",
+            "اضطراب طيف التوحد (ASD)",
+            "اضطراب فرط الحركة ونقص الانتباه (ADHD)",
+            "اضطرابات النطق واللغة والتواصل (تأتأة، عيوب نطق)"
+        ],
+        "3. الإعاقات الذهنية والسلوكية": [
+            "الإعاقة الذهنية / العقلية (بسيطة، متوسطة، شديدة)",
+            "الاضطرابات الانفعالية والسلوكية (قلق شديد، اكتئاب، مخاوف مدرسية)",
+            "الإعاقات المتعددة (أكثر من إعاقة معاً)"
+        ],
+        "4. الإعاقات والحالات الصحية المزمنة": [
+            "الأمراض المزمنة المحتاجة لمتابعة (سكري، ربو شديد، صرع، أمراض قلب)",
+            "مرضى السرطان (برامج استكمال وعلاجات مستمرة)",
+            "حالات الفشل الكلوي (غسيل دوري)"
+        ],
+        "5. فئة الموهبة والتفوق": [
+            "الطلبة الموهوبون والمتفوقون (برامج إثراء معرفي وتسريع أكاديمي)"
+        ]
+    }
+
+    selected_grade = st.selectbox("اختر الصف الدراسي:", grades)
+    selected_system = st.selectbox("اختر النظام التعليمي:", educational_systems)
+    selected_gov = st.selectbox("اختر محافظة المدرسة في الأردن:", jordan_governorates)
+    
+    selected_category = st.selectbox("اختر فئة الحالة الخاصة:", list(special_conditions_categories.keys()))
+    selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة:", special_conditions_categories[selected_category])
+
+    uploaded_file = st.file_uploader("قم بتمرير أو رفع ملف ورقة العمل (PDF أو Word أو TXT):", type=["pdf", "docx", "txt"])
+
+    extracted_content = ""
+    if uploaded_file is not None:
+        file_extension = uploaded_file.name.split(".")[-1].lower()
+        if file_extension == "txt":
+            extracted_content = uploaded_file.getvalue().decode("utf-8")
+        elif file_extension == "docx":
+            doc = Document(uploaded_file)
+            extracted_content = "\n".join([para.text for para in doc.paragraphs])
+        elif file_extension == "pdf":
+            pdf_reader = pypdf.PdfReader(uploaded_file)
+            extracted_content = "\n".join([page.extract_text() for page in pdf_reader.pages if page.extract_text()])
         
-        1. الهدف التعليمي المعدل: أن يتعرف الطالب على المفاهيم الأساسية بطريقة مبسطة ومجزأة.
-        2. الاستراتيجيات والوسائل: استخدام الدعم البصري واللمسي، وتعزيز الاستقلالية.
-        3. الأسئلة والتمارين: تم تكييف الأسئلة لتناسب مستوى الأداء الفردي مع توفير مساحات إجابة واضحة.
-        """
+        st.success(f"تم قراءة الملف بنجاح: {uploaded_file.name}")
 
-        st.success("تم تكييف ورقة العمل بنجاح!")
-        st.write(adapted_content)
-
-        # إذا قام المستخدم بإدخال رابط Canva، نقوم بعرضه بشكل تفاعلي
-        if canva_template_url:
-          st.info(
-              "تم ربط المحتوى بنجاح مع تصميم Canva الخاص بك لتسهيل العرض"
-              " البصري للطلاب."
-          )
-          st.markdown(
-              f"🔗 [اضغط هنا لفتح قالب Canva وتعديله مباشرة]"
-              f"({canva_template_url})"
-          )
-
-        # 1. توليد ملف Word بشكل آمن (بصيغة بايتات Bytes لتجنب أي أخطاء)
+    # دوال توليد الملفات المتوافقة مع اللغة العربية والنصوص الدقيقة
+    def create_word_file(text):
         doc = Document()
-        doc.add_heading("نظام تكييف أوراق العمل التربوية", 0)
-        doc.add_paragraph(adapted_content)
+        doc.add_heading('ورقة العمل المطورة (التربية الخاصة)', 0)
+        for line in text.split('\n'):
+            doc.add_paragraph(line)
+        bio = io.BytesIO()
+        doc.save(bio)
+        bio.seek(0)
+        return bio
 
-        doc_io = io.BytesIO()
-        doc.save(doc_io)
-        doc_io.seek(0)
-
-        # 2. توليد ملف PowerPoint بشكل آمن
+    def create_ppt_file(text):
         prs = Presentation()
         slide_layout = prs.slide_layouts[1]
         slide = prs.slides.add_slide(slide_layout)
-        slide.shapes.title.text = topic
-        slide.placeholders[1].text = adapted_content
+        title = slide.shapes.title
+        subtitle = slide.placeholders[1]
+        title.text = "ورقة العمل المطورة"
+        subtitle.text = text[:300] + "..." if len(text) > 300 else text
+        bio = io.BytesIO()
+        prs.save(bio)
+        bio.seek(0)
+        return bio
 
-        pptx_io = io.BytesIO()
-        prs.save(pptx_io)
-        pptx_io.seek(0)
+    def create_pdf_file(text):
+        pdf = FPDF()
+        pdf.add_page()
+        # استخدام خط عام متوافق وتجنب التشفير الخاطئ
+        pdf.set_font("Arial", size=11)
+        pdf.set_auto_page_break(auto=True, margin=15)
+        # تنظيف النص لضمان توافق التحميل
+        clean_text = text.encode('latin-1', 'ignore').decode('latin-1')
+        for line in clean_text.split('\n'):
+            if line.strip():
+                pdf.multi_cell(0, 8, line)
+            else:
+                pdf.ln(4)
+        bio = io.BytesIO(pdf.output(dest='S'))
+        bio.seek(0)
+        return bio
 
-        st.write("---")
-        st.subheader("تحميل الملفات المطورة / Download Adapted Files:")
+    if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀"):
+        if not extracted_content.strip():
+            st.warning("الرجاء رفع ملف ورقة العمل أولاً ليتم استخراج محتواه.")
+        else:
+            with st.spinner("جاري معالجة ورقة العمل وتكييفها عبر الذكاء الاصطناعي..."):
+                prompt = f"""
+                أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). يرجى تكييف وتطوير ورقة العمل التالية بدقة فائقة:
+                - الصف الدراسي: {selected_grade}
+                - النظام التعليمي: {selected_system}
+                - موقع المدرسة (المحافظة): {selected_gov} - الأردن
+                - التصنيف والحالة الخاصة: {selected_category} -> {selected_condition}
+                
+                محتوى ورقة العمل المستخرج من الملف:
+                {extracted_content}
+                
+                يرجى إعادة صياغة ورقة العمل وتنظيمها بطريقة تربوية احترافية تراعي الفروق الفردية والخصائص المذكورة بدقة تامة، وإظهار دليل المعلم وإرشادات الدمج بوضوح.
+                """
+                try:
+                    model = genai.GenerativeModel(MODEL_NAME)
+                    response = model.generate_content(prompt)
+                    adapted_text = response.text
+                    
+                    st.success("تم تكييف ورقة العمل بنجاح تام!")
+                    st.markdown("### ورقة العمل المطورة:")
+                    st.markdown(adapted_text)
+                    
+                    st.markdown("---")
+                    st.subheader("📥 تحميل ورقة العمل المطورة:")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        word_data = create_word_file(adapted_text)
+                        st.download_button(
+                            label="تحميل Word (.docx)",
+                            data=word_data,
+                            file_name="Adapted_Worksheet.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                        
+                    with col2:
+                        ppt_data = create_ppt_file(adapted_text)
+                        st.download_button(
+                            label="تحميل PowerPoint (.pptx)",
+                            data=ppt_data,
+                            file_name="Adapted_Worksheet.pptx",
+                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        )
+                        
+                    with col3:
+                        pdf_data = create_pdf_file(adapted_text)
+                        st.download_button(
+                            label="تحميل PDF (.pdf)",
+                            data=pdf_data,
+                            file_name="Adapted_Worksheet.pdf",
+                            mime="application/pdf"
+                        )
 
-        # أزرار التحميل الآمنة
-        st.download_button(
-            label="تحميل Word (.docx)",
-            data=doc_io,
-            file_name="Adapted_Worksheet.docx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            ),
-        )
-
-        st.download_button(
-            label="تحميل PowerPoint (.pptx)",
-            data=pptx_io,
-            file_name="Adapted_Presentation.pptx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            ),
-        )
-
-      except Exception as e:
-        st.error(f"حدث خطأ أثناء الاتصال أو معالجة الملفات: {e}")
-  else:
-    st.warning("يرجى إدخال المبحث وعنوان الدرس أولاً.")
-
-# قسم الملاحظات والأداء أسفل الصفحة
-st.write("---")
-st.markdown("### Feedback / ملاحظات التعزيز والأداء:")
-st.checkbox("Mastered with tactile support / أتقن المهارة بمساعدة لمسية")
-st.checkbox("Mastered independently / أتقن المهارة باستقلالية")
-st.checkbox("Needs prompt / يحتاج إلى إعادة توجيه")
+                except Exception as e:
+                    st.error(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: {str(e)}")
+else:
+    st.info("الرجاء إدخال مفتاح الـ API الخاص بك في الأعلى لتشغيل التطبيق.")
