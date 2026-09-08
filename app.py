@@ -13,14 +13,21 @@ st.set_page_config(page_title="تكييف أوراق العمل بالذكاء �
 st.title("📚 نظام تكييف أوراق العمل التربوية")
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً مع خيارات التحميل المتعددة.")
 
-# إدخال مفتاح الـ API
-api_key = st.text_input("أدخل مفتاح Google Gemini API Key:", type="password")
+# جلب مفتاح الـ API بأمان من إعدادات ستريمليت أو جعله مدخلاً تلقائياً
+api_key = None
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+except:
+    pass
+
+if not api_key:
+    api_key = st.text_input("أدخل مفتاح Google Gemini API Key:", type="password")
 
 if api_key:
     genai.configure(api_key=api_key)
-    MODEL_NAME = "gemini-2.5-flash"
+    # استخدام الموديل الحديث الذي يتوافق مع النظام الآن
+    MODEL_NAME = "gemini-3.6-flash"
 
-    # القوائم والخيارات الشاملة
     grades = [
         "الصف الأول", "الصف الثاني", "الصف الثالث", "الصف الرابع", 
         "الصف الخامس", "الصف السادس", "الصف السابع", "الصف الثامن", "الصف التاسع"
@@ -64,7 +71,6 @@ if api_key:
         ]
     }
 
-    # واجهة الإدخال في التطبيق
     selected_grade = st.selectbox("اختر الصف الدراسي:", grades)
     selected_system = st.selectbox("اختر النظام التعليمي:", educational_systems)
     selected_gov = st.selectbox("اختر محافظة المدرسة في الأردن:", jordan_governorates)
@@ -72,7 +78,6 @@ if api_key:
     selected_category = st.selectbox("اختر فئة الحالة الخاصة:", list(special_conditions_categories.keys()))
     selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة:", special_conditions_categories[selected_category])
 
-    # استبدال خانة اللصق بزر رفع الملفات (PDF أو Word أو TXT)
     uploaded_file = st.file_uploader("قم بتمرير أو رفع ملف ورقة العمل (PDF أو Word أو TXT):", type=["pdf", "docx", "txt"])
 
     extracted_content = ""
@@ -89,7 +94,6 @@ if api_key:
         
         st.success(f"تم قراءة الملف بنجاح: {uploaded_file.name}")
 
-    # دوال توليد الملفات للتحميل
     def create_word_file(text):
         doc = Document()
         doc.add_heading('ورقة العمل المطورة (التربية الخاصة)', 0)
@@ -128,7 +132,7 @@ if api_key:
         if not extracted_content.strip():
             st.warning("الرجاء رفع ملف ورقة العمل أولاً ليتم استخراج محتواه.")
         else:
-            with st.spinner("جاري معالجة ورقة العمل وتكييفها..."):
+            with st.spinner("جاري معالجة ورقة العمل وتكييفها عبر موديل الذكاء الاصطناعي الحديث..."):
                 prompt = f"""
                 أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج. يرجى تكييف وتطوير ورقة العمل التالية بدقة عالية:
                 - الصف الدراسي: {selected_grade}
@@ -146,11 +150,10 @@ if api_key:
                     response = model.generate_content(prompt)
                     adapted_text = response.text
                     
-                    st.success("تم تكييف ورقة العمل بنجاح!")
+                    st.success("تم تكييف ورقة العمل بنجاح تام!")
                     st.markdown("### ورقة العمل المطورة:")
                     st.markdown(adapted_text)
                     
-                    # خيارات التحميل المتعددة
                     st.markdown("---")
                     st.subheader("📥 تحميل ورقة العمل المطورة:")
                     
