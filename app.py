@@ -13,7 +13,7 @@ st.set_page_config(page_title="تكييف أوراق العمل بالذكاء �
 st.title("📚 نظام تكييف أوراق العمل التربوية")
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً مع خيارات التحميل المتعددة.")
 
-# جلب مفتاح الـ API بأمان من إعدادات ستريمليت أو جعله مدخلاً تلقائياً
+# جلب مفتاح الـ API بأمان
 api_key = None
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
@@ -25,7 +25,6 @@ if not api_key:
 
 if api_key:
     genai.configure(api_key=api_key)
-    # استخدام الموديل الحديث الذي يتوافق مع النظام الآن
     MODEL_NAME = "gemini-3.6-flash"
 
     grades = [
@@ -94,10 +93,12 @@ if api_key:
         
         st.success(f"تم قراءة الملف بنجاح: {uploaded_file.name}")
 
+    # دوال توليد الملفات المتوافقة مع اللغة العربية والنصوص الدقيقة
     def create_word_file(text):
         doc = Document()
         doc.add_heading('ورقة العمل المطورة (التربية الخاصة)', 0)
-        doc.add_paragraph(text)
+        for line in text.split('\n'):
+            doc.add_paragraph(line)
         bio = io.BytesIO()
         doc.save(bio)
         bio.seek(0)
@@ -110,7 +111,7 @@ if api_key:
         title = slide.shapes.title
         subtitle = slide.placeholders[1]
         title.text = "ورقة العمل المطورة"
-        subtitle.text = text[:500] + "..." if len(text) > 500 else text
+        subtitle.text = text[:300] + "..." if len(text) > 300 else text
         bio = io.BytesIO()
         prs.save(bio)
         bio.seek(0)
@@ -119,12 +120,17 @@ if api_key:
     def create_pdf_file(text):
         pdf = FPDF()
         pdf.add_page()
+        # استخدام خط عام متوافق وتجنب التشفير الخاطئ
+        pdf.set_font("Arial", size=11)
         pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.set_font("Arial", size=12)
-        safe_text = text.encode('latin-1', 'replace').decode('latin-1')
-        for line in safe_text.split('\n'):
-            pdf.multi_cell(0, 10, line)
-        bio = io.BytesIO(pdf.output(dest='S').encode('latin-1'))
+        # تنظيف النص لضمان توافق التحميل
+        clean_text = text.encode('latin-1', 'ignore').decode('latin-1')
+        for line in clean_text.split('\n'):
+            if line.strip():
+                pdf.multi_cell(0, 8, line)
+            else:
+                pdf.ln(4)
+        bio = io.BytesIO(pdf.output(dest='S'))
         bio.seek(0)
         return bio
 
@@ -132,9 +138,9 @@ if api_key:
         if not extracted_content.strip():
             st.warning("الرجاء رفع ملف ورقة العمل أولاً ليتم استخراج محتواه.")
         else:
-            with st.spinner("جاري معالجة ورقة العمل وتكييفها عبر موديل الذكاء الاصطناعي الحديث..."):
+            with st.spinner("جاري معالجة ورقة العمل وتكييفها عبر الذكاء الاصطناعي..."):
                 prompt = f"""
-                أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج. يرجى تكييف وتطوير ورقة العمل التالية بدقة عالية:
+                أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). يرجى تكييف وتطوير ورقة العمل التالية بدقة فائقة:
                 - الصف الدراسي: {selected_grade}
                 - النظام التعليمي: {selected_system}
                 - موقع المدرسة (المحافظة): {selected_gov} - الأردن
@@ -143,7 +149,7 @@ if api_key:
                 محتوى ورقة العمل المستخرج من الملف:
                 {extracted_content}
                 
-                يرجى إعادة صياغة ورقة العمل وتنظيمها بطريقة تربوية احترافية تراعي الفروق الفردية والخصائص المذكورة بدقة تامة.
+                يرجى إعادة صياغة ورقة العمل وتنظيمها بطريقة تربوية احترافية تراعي الفروق الفردية والخصائص المذكورة بدقة تامة، وإظهار دليل المعلم وإرشادات الدمج بوضوح.
                 """
                 try:
                     model = genai.GenerativeModel(MODEL_NAME)
