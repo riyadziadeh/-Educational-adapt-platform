@@ -5,12 +5,13 @@ import google.generativeai as genai
 from docx import Document
 from pptx import Presentation
 from fpdf import FPDF
+import pypdf
 
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي", layout="centered")
 
 st.title("📚 نظام تكييف أوراق العمل التربوية")
-st.write("قم بإدخال تفاصيل ورقة العمل وسيتم تكييفها تلقائياً مع خيارات التحميل المتعددة.")
+st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً مع خيارات التحميل المتعددة.")
 
 # إدخال مفتاح الـ API
 api_key = st.text_input("أدخل مفتاح Google Gemini API Key:", type="password")
@@ -71,7 +72,22 @@ if api_key:
     selected_category = st.selectbox("اختر فئة الحالة الخاصة:", list(special_conditions_categories.keys()))
     selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة:", special_conditions_categories[selected_category])
 
-    original_content = st.text_area("الصق محتوى ورقة العمل الأصلية هنا:")
+    # استبدال خانة اللصق بزر رفع الملفات (PDF أو Word أو TXT)
+    uploaded_file = st.file_uploader("قم بتمرير أو رفع ملف ورقة العمل (PDF أو Word أو TXT):", type=["pdf", "docx", "txt"])
+
+    extracted_content = ""
+    if uploaded_file is not None:
+        file_extension = uploaded_file.name.split(".")[-1].lower()
+        if file_extension == "txt":
+            extracted_content = uploaded_file.getvalue().decode("utf-8")
+        elif file_extension == "docx":
+            doc = Document(uploaded_file)
+            extracted_content = "\n".join([para.text for para in doc.paragraphs])
+        elif file_extension == "pdf":
+            pdf_reader = pypdf.PdfReader(uploaded_file)
+            extracted_content = "\n".join([page.extract_text() for page in pdf_reader.pages if page.extract_text()])
+        
+        st.success(f"تم قراءة الملف بنجاح: {uploaded_file.name}")
 
     # دوال توليد الملفات للتحميل
     def create_word_file(text):
@@ -85,15 +101,12 @@ if api_key:
 
     def create_ppt_file(text):
         prs = Presentation()
-        slide_layout = prs.slide_layouts[1] # شريحة عنوان ومحتوى
+        slide_layout = prs.slide_layouts[1]
         slide = prs.slides.add_slide(slide_layout)
         title = slide.shapes.title
         subtitle = slide.placeholders[1]
-        
         title.text = "ورقة العمل المطورة"
-        # تقصير النص للشريحة إذا كان طويلاً
         subtitle.text = text[:500] + "..." if len(text) > 500 else text
-        
         bio = io.BytesIO()
         prs.save(bio)
         bio.seek(0)
@@ -104,18 +117,16 @@ if api_key:
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.set_font("Arial", size=12)
-        # معالجة النصوص العربية المبسطة للـ PDF الافتراضي
         safe_text = text.encode('latin-1', 'replace').decode('latin-1')
         for line in safe_text.split('\n'):
             pdf.multi_cell(0, 10, line)
-        
         bio = io.BytesIO(pdf.output(dest='S').encode('latin-1'))
         bio.seek(0)
         return bio
 
     if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀"):
-        if not original_content.strip():
-            st.warning("الرجاء إدخال محتوى ورقة العمل الأصلية أولاً.")
+        if not extracted_content.strip():
+            st.warning("الرجاء رفع ملف ورقة العمل أولاً ليتم استخراج محتواه.")
         else:
             with st.spinner("جاري معالجة ورقة العمل وتكييفها..."):
                 prompt = f"""
@@ -125,8 +136,8 @@ if api_key:
                 - موقع المدرسة (المحافظة): {selected_gov} - الأردن
                 - التصنيف والحالة الخاصة: {selected_category} -> {selected_condition}
                 
-                محتوى ورقة العمل الأصلية:
-                {original_content}
+                محتوى ورقة العمل المستخرج من الملف:
+                {extracted_content}
                 
                 يرجى إعادة صياغة ورقة العمل وتنظيمها بطريقة تربوية احترافية تراعي الفروق الفردية والخصائص المذكورة بدقة تامة.
                 """
