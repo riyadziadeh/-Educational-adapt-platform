@@ -1,7 +1,6 @@
 import os
 import io
 import time
-import urllib.parse
 import streamlit as st
 import google.generativeai as genai
 from docx import Document
@@ -11,6 +10,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from fpdf import FPDF
 import pypdf
+from gtts import gTTS
 
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
@@ -333,16 +333,18 @@ else:
                     st.markdown("### ورقة العمل المطورة ثنائية اللغة / Bilingual Adapted Worksheet:")
                     st.markdown(adapted_text)
                     
-                    # مشغل صوتي مخصص لقراءة النص حصرياً (Text-to-Speech صامت وخالٍ من الموسيقى)
+                    # مشغل الصوت الحقيقي باستخدام مكتبة gTTS لتوليد ملف صوتي بشري يقرأ النص
                     st.markdown("---")
                     st.markdown("🔊 **استماع صوتي مباشر لقراءة النص المطور / Direct Text-to-Speech Audio:**")
-                    
-                    # تنظيف النص وتجهيزه للرابط الصوتي الآمن
-                    clean_speech_text = adapted_text.replace("#", "").replace("*", "").replace("-", "")[:200]
-                    encoded_text = urllib.parse.quote(clean_speech_text)
-                    tts_audio_url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={encoded_text}&tl=ar&client=tw-ob"
-                    
-                    st.audio(tts_audio_url, format="audio/mp3")
+                    try:
+                        clean_speech_text = adapted_text.replace("#", "").replace("*", "").replace("-", "")[:400]
+                        tts = gTTS(text=clean_speech_text, lang='ar')
+                        audio_fp = io.BytesIO()
+                        tts.write_to_fp(audio_fp)
+                        audio_fp.seek(0)
+                        st.audio(audio_fp, format="audio/mp3")
+                    except Exception as e:
+                        st.info("عذراً، تعذر تشغيل القراءة الصوتية مؤقتاً.")
 
                     st.markdown("---")
                     st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
