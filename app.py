@@ -103,6 +103,7 @@ else:
     genai.configure(api_key=api_key)
     MODEL_NAME = "gemini-3.8-flash"
 
+    # القوائم ثنائية اللغة بالكامل
     grades = [
         "الصف الأول / Grade 1", "الصف الثاني / Grade 2", "الصف الثالث / Grade 3", 
         "الصف الرابع / Grade 4", "الصف الخامس / Grade 5", "الصف السادس / Grade 6", 
@@ -149,6 +150,7 @@ else:
         ]
     }
 
+    # واجهة الإدخال ثنائية اللغة
     selected_grade = st.selectbox("اختر الصف الدراسي / Select Grade:", grades)
     selected_system = st.selectbox("اختر النظام التعليمي / Select Educational System:", educational_systems)
     selected_gov = st.selectbox("اختر محافظة المدرسة في الأردن / Select Governorate in Jordan:", jordan_governorates)
@@ -333,17 +335,17 @@ else:
                     st.markdown("### ورقة العمل المطورة ثنائية اللغة / Bilingual Adapted Worksheet:")
                     st.markdown(adapted_text)
                     
-                    # توليد وتشغيل الصوت الحقيقي باستخدام مكتبة gTTS
+                    # مشغل الصوت الحقيقي باستخدام gTTS
                     st.markdown("---")
                     st.markdown("🔊 **استماع صوتي مباشر للنص المطور / Direct Audio Text-to-Speech Accessibility:**")
                     try:
-                        tts = gTTS(text=adapted_text[:400], lang='ar')
+                        tts = gTTS(text=adapted_text[:500], lang='ar')
                         tts_io = io.BytesIO()
                         tts.write_to_fp(tts_io)
                         tts_io.seek(0)
                         st.audio(tts_io, format="audio/mp3")
                     except Exception:
-                        st.info("الصوت غير متاح حالياً للتفريغ التجريبي.")
+                        st.info("عذراً، تعذر توليد الملف الصوتي مؤقتاً.")
 
                     st.markdown("---")
                     st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
