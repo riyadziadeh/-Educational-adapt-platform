@@ -49,17 +49,22 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# عرض الشعار الأفقي بجودة عالية وبحجم عريض في منتصف الصفحة تماماً
+# عرض الشعار أو الأيقونة الجديدة بجودة عالية وبحجم مناسب في منتصف الصفحة تماماً
 col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
 with col_logo2:
     logo_loaded = False
-    for filename in ["logo.png", "logo.jpg", "Logo.png", "Logo.JPG"]:
+    # إضافة الاسم الجديد المرفق في البريد ضمن قائمة البحث عن الشعار
+    logo_filenames = [
+        "Educ_Worksheet_Adapt_Icon_(Square).png", 
+        "logo.png", "logo.jpg", "Logo.png", "Logo.JPG"
+    ]
+    for filename in logo_filenames:
         if os.path.exists(filename):
             st.image(filename, use_container_width=True)
             logo_loaded = True
             break
     if not logo_loaded:
-        st.warning("الرجاء التأكد من رفع صورة الشعار باسم logo.png في نفس مجلد المشروع.")
+        st.warning("الرجاء التأكد من رفع صورة الأيقونة في نفس مجلد المشروع.")
 
 # العنوان الرئيسي للنظام تحت الشعار مباشرة
 st.markdown("""
@@ -300,7 +305,7 @@ else:
                             mime="application/pdf"
                         )
 
-                    # رسالة الشكر المنسقة نحوياً وبدون كلمة مهم مع تأثير الحركة (Animation)
+                    # رسالة الشكر المنسقة نحوياً بدون كلمة مهم وبحركة انسيابية
                     st.markdown("---")
                     st.markdown("""
                         <div class="animated-box" style="background-color: #FFFDEB; border: 2px solid #F1C40F; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
