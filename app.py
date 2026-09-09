@@ -13,14 +13,29 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
-st.title("📚 نظام تكييف أوراق العمل التربوية / Educational Worksheet Adaptation System")
+# رابط الشعار (Logo)
+logo_url = "رابط_صورة_اللوجو_هنا" 
+
+# عرض الشعار بجانب العنوان الرئيسي دون المساس بأي تفصيل آخر
+st.markdown(f"""
+    <div style="display: flex; align-items: center; gap: 15px;">
+        <img src="{logo_url}" width="60" style="border-radius: 8px;">
+        <h1 style="margin: 0; font-size: 28px;">نظام تكييف أوراق العمل / التربوية</h1>
+    </div>
+    <h2 style="margin-top: 5px; font-size: 24px;">Educational Worksheet Adaptation System</h2>
+""", unsafe_allow_html=True)
+
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
 
-# جلب مفتاح الـ API حصرياً من إعدادات الأمان السرية للسيرفر (Streamlit Secrets)
-api_key = st.secrets.get("GOOGLE_API_KEY")
+# جلب مفتاح الـ API حصرياً من الأسرار البرمجية (Secrets) دون إظهاره في الواجهة
+api_key = None
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+except Exception:
+    pass
 
 if not api_key:
-    st.error("⚠️ تنبيه برمجي: لم يتم العثور على مفتاح 'GOOGLE_API_KEY' في إعدادات السيرفر السرية (Secrets). يرجى إضافته من لوحة تحكم التطبيق لكي يعمل الذكاء الاصطناعي بسلاسة.")
+    st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) لتشغيل النظام.")
 else:
     genai.configure(api_key=api_key)
     MODEL_NAME = "gemini-3.6-flash"
@@ -106,6 +121,7 @@ else:
         bio.seek(0)
         return bio
 
+    # دالة توليد بوربوينت احترافي بتصميم أنيق (Prezi-Style Flow: شرائح تفاعلية متسلسلة)
     def create_ppt_file(text):
         prs = Presentation()
         slide_layout = prs.slide_layouts[0]
