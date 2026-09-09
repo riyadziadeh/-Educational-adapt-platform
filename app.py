@@ -27,7 +27,7 @@ st.markdown("""
     }
 
     /* عناوين الحقول والقوائم بخط عريض وواضح جداً */
-    .stSelectbox label p, .stFileUploader label p, div[data-baseweb="select"] label, label {
+    .stSelectbox label p, .stFileUploader label p, div[data-baseweb="select"] label, label, .stCheckbox label p {
         font-weight: 900 !important;
         font-size: 17px !important;
         color: #1A252F !important;
@@ -53,7 +53,6 @@ st.markdown("""
 col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
 with col_logo2:
     logo_loaded = False
-    # إضافة الاسم الجديد المرفق في البريد ضمن قائمة البحث عن الشعار
     logo_filenames = [
         "Educ_Worksheet_Adapt_Icon_(Square).png", 
         "logo.png", "logo.jpg", "Logo.png", "Logo.JPG"
@@ -159,6 +158,21 @@ else:
     selected_category = st.selectbox("اختر فئة الحالة الخاصة / Select Special Condition Category:", list(special_conditions_categories.keys()))
     selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة / Select Specific Condition:", special_conditions_categories[selected_category])
 
+    # اقتراح مستوى التكييف والتحسين بدقة
+    adaptation_levels = [
+        "تكييف متوازن وشامل (Balanced Adaptation)",
+        "تبسيط وتسهيل شديد للمفاهيم (Deep Simplification)",
+        "إثراء معرفي متقدم للموهوبين (Advanced Enrichment)",
+        "دمج بصري وحسي مكثف (Sensory & Visual Integration)"
+    ]
+    selected_level = st.selectbox("اختر مستوى وطبيعة التكييف / Select Adaptation Level:", adaptation_levels)
+
+    # الاقتراح الأول (اختياري): اختيار توليد ورقة عمل بديلة مقترحة مع بنك أسئلة تقييمي
+    generate_alternative = st.checkbox(
+        "توليد ورقة عمل بديلة مقترحة مع بنك أسئلة تقييمي (اختياري) / Generate an alternative worksheet with an assessment quiz",
+        value=False
+    )
+
     uploaded_file = st.file_uploader("قم بتمرير أو رفع ملف ورقة العمل (PDF أو Word أو TXT) / Upload Worksheet File:", type=["pdf", "docx", "txt"])
 
     extracted_content = ""
@@ -236,20 +250,42 @@ else:
         if not extracted_content.strip():
             st.warning("الرجاء رفع ملف ورقة العمل أولاً / Please upload a file first.")
         else:
-            with st.spinner("جاري معالجة ورقة العمل باستخدام أحدث تقنيات الذكاء الاصطناعي... / Processing..."):
-                prompt = f"""
-                أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
-                يرجى تكييف وتطوير ورقة العمل التالية بدقة فائقة مع توفير المصطلحات باللغتين العربية والإنجليزية:
-                - الصف الدراسي / Grade: {selected_grade}
-                - النظام التعليمي / System: {selected_system}
-                - موقع المدرسة (المحافظة) / Governorate: {selected_gov} - الأردن
-                - التصنيف والحالة الخاصة / Condition: {selected_category} -> {selected_condition}
+            mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
+            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) باستخدام أحدث تقنيات الذكاء الاصطناعي... / Processing..."):
                 
-                محتوى ورقة العمل المستخرج من الملف:
-                {extracted_content}
-                
-                يرجى إعادة صياغة ورقة العمل وتنظيمها بطريقة تربوية احترافية ثنائية اللغة (عربي/إنجليزي) تراعي الفروق الفردية وإرشادات الدمج الشامل.
-                """
+                if generate_alternative:
+                    prompt = f"""
+                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
+                    بناءً على محتوى ورقة العمل المستخرجة أدناه، يرجى تصميم وابتكار **ورقة عمل بديلة مقترحة بالكامل** بالإضافة إلى **بنك أسئلة تقييمي تشخيصي** يناسب الحالة الخاصة المحددة ومستوى التكييف المطلوب ({selected_level})، مع توفير المصطلحات باللغتين العربية والإنجليزية:
+                    - الصف الدراسي / Grade: {selected_grade}
+                    - النظام التعليمي / System: {selected_system}
+                    - موقع المدرسة (المحافظة) / Governorate: {selected_gov} - الأردن
+                    - التصنيف والحالة الخاصة / Condition: {selected_category} -> {selected_condition}
+                    - مستوى التكييف / Level: {selected_level}
+                    
+                    محتوى ورقة العمل الأصلية:
+                    {extracted_content}
+                    
+                    يرجى تنظيم المخرجات بطريقة تربوية احترافية ثنائية اللغة (عربي/إنجليزي) تشمل:
+                    1. أهداف التعلم البديلة.
+                    2. ورقة العمل البديلة المبسطة والمكيفة.
+                    3. بنك أسئلة تقييمي مقترح يناسب قدرات الطالب مع إجاباتها النموذجية.
+                    """
+                else:
+                    prompt = f"""
+                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
+                    يرجى تكييف وتطوير ورقة العمل التالية بدقة فائقة وبناءً على مستوى التكييف المطلوب ({selected_level}) مع توفير المصطلحات باللغتين العربية والإنجليزية:
+                    - الصف الدراسي / Grade: {selected_grade}
+                    - النظام التعليمي / System: {selected_system}
+                    - موقع المدرسة (المحافظة) / Governorate: {selected_gov} - الأردن
+                    - التصنيف والحالة الخاصة / Condition: {selected_category} -> {selected_condition}
+                    - مستوى التكييف / Level: {selected_level}
+                    
+                    محتوى ورقة العمل المستخرج من الملف:
+                    {extracted_content}
+                    
+                    يرجى إعادة صياغة ورقة العمل الأصلية وتنظيمها بطريقة تربوية احترافية ثنائية اللغة (عربي/إنجليزي) تراعي الفروق الفردية وإرشادات الدمج الشامل.
+                    """
                 
                 # آلية إعادة المحاولة الذكية لتفادي أي ضغط على خوادم الـ API
                 adapted_text = None
@@ -273,6 +309,11 @@ else:
                     st.markdown("### ورقة العمل المطورة ثنائية اللغة / Bilingual Adapted Worksheet:")
                     st.markdown(adapted_text)
                     
+                    # زر الاستماع الصوتي النصي (Accessibility Text-to-Speech)
+                    st.markdown("---")
+                    st.markdown("🔊 **استماع صوتي مباشر للنص المطور / Direct Audio Text-to-Speech Accessibility:**")
+                    st.audio(f"https://translate.google.com/translate_tts?ie=UTF-8&q={extracted_content[:150]}&tl=ar&client=tw-ob", format="audio/mp3")
+
                     st.markdown("---")
                     st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
                     
