@@ -10,6 +10,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from fpdf import FPDF
 import pypdf
+from gtts import gTTS
 
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
@@ -102,7 +103,6 @@ else:
     genai.configure(api_key=api_key)
     MODEL_NAME = "gemini-3.8-flash"
 
-    # القوائم ثنائية اللغة بالكامل
     grades = [
         "الصف الأول / Grade 1", "الصف الثاني / Grade 2", "الصف الثالث / Grade 3", 
         "الصف الرابع / Grade 4", "الصف الخامس / Grade 5", "الصف السادس / Grade 6", 
@@ -149,7 +149,6 @@ else:
         ]
     }
 
-    # واجهة الإدخال ثنائية اللغة
     selected_grade = st.selectbox("اختر الصف الدراسي / Select Grade:", grades)
     selected_system = st.selectbox("اختر النظام التعليمي / Select Educational System:", educational_systems)
     selected_gov = st.selectbox("اختر محافظة المدرسة في الأردن / Select Governorate in Jordan:", jordan_governorates)
@@ -305,7 +304,6 @@ else:
                     if success_with_model and adapted_text:
                         break
 
-                # الحل الجذري للتصميم: إذا استنفدت الحصة بالكامل، يتم توليد استجابة نموذجية مباشرة لتتمكن من التصميم والاختبار دون توقف
                 if not adapted_text:
                     adapted_text = f"""
 ### ورقة العمل المطورة والمكيفة (نسخة تجريبية / Mock Adapted Worksheet)
@@ -335,10 +333,17 @@ else:
                     st.markdown("### ورقة العمل المطورة ثنائية اللغة / Bilingual Adapted Worksheet:")
                     st.markdown(adapted_text)
                     
-                    # زر الاستماع الصوتي النصي (Accessibility Text-to-Speech)
+                    # توليد وتشغيل الصوت الحقيقي باستخدام مكتبة gTTS
                     st.markdown("---")
                     st.markdown("🔊 **استماع صوتي مباشر للنص المطور / Direct Audio Text-to-Speech Accessibility:**")
-                    st.audio(f"https://translate.google.com/translate_tts?ie=UTF-8&q={extracted_content[:150]}&tl=ar&client=tw-ob", format="audio/mp3")
+                    try:
+                        tts = gTTS(text=adapted_text[:400], lang='ar')
+                        tts_io = io.BytesIO()
+                        tts.write_to_fp(tts_io)
+                        tts_io.seek(0)
+                        st.audio(tts_io, format="audio/mp3")
+                    except Exception:
+                        st.info("الصوت غير متاح حالياً للتفريغ التجريبي.")
 
                     st.markdown("---")
                     st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
