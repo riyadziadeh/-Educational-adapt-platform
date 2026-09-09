@@ -13,11 +13,16 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
-# عرض الشعار بشكل مركز، كبير، وواضح تماماً في منتصف الصفحة
+# عرض الشعار الأفقي الجديد باسم logo.png مباشرة وبشكل مركز وواضح
+col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
+with col_logo2:
+    try:
+        st.image("logo.png", width=300)
+    except Exception:
+        st.warning("الرجاء التأكد من رفع صورة الشعار باسم logo.png في نفس مجلد المشروع.")
+
+# العنوان الرئيسي للنظام تحت الشعار مباشرة
 st.markdown("""
-    <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px;">
-        <img src="app/static/logo.png" width="220" style="border-radius: 50%; box-shadow: 0px 4px 12px rgba(0,0,0,0.15);">
-    </div>
     <div style="text-align: center;">
         <h1 style="font-size: 28px; margin-bottom: 0;">نظام تكييف أوراق العمل التربوية</h1>
         <h2 style="font-size: 22px; margin-top: 5px; color: #555;">Educational Worksheet Adaptation System</h2>
