@@ -13,13 +13,13 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
-# عرض صورة الشعار (Logo) في الأعلى فوق العنوان تماماً (تأكد أن اسم الصورة في نفس المجلد هو logo.png)
+# عرض الشعار في الأعلى (فوق العنوان) مع معالجة آمنة للأخطاء
 col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
 with col_logo2:
     try:
-        st.image("logo.png", width=180)
+        st.image("logo.png", width=160)
     except Exception:
-        pass
+        st.markdown("<div style='text-align: center; font-size: 40px;'>🏫</div>", unsafe_allow_html=True)
 
 # العنوان الرئيسي للنظام تحت الشعار
 st.markdown("""
