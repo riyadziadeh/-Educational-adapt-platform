@@ -13,31 +13,24 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
-# تشغيل موسيقى البيانو كلاسيكية تلقائياً في الخلفية بدون ظهور أي مشغل مرئي
-st.markdown("""
-    <audio autoplay loop style="display:none;">
-        <source src="https://upload.wikimedia.org/wikipedia/commons/e/e4/Beethoven_Fur_Elise_WoO_59_%28Part_1%29.ogg" type="audio/ogg">
-    </audio>
-""", unsafe_allow_html=True)
-
-# تخصيص CSS شامل وقوي جداً لتلوين الحقول باللون الأصفر البارد وجعل الخطوط عريضة (Bold)
+# تخصيص CSS لتلوين الخانات بالأصفر الهادئ وجعل الخطوط عريضة (Bold)
 st.markdown("""
     <style>
-    /* جعل جميع عناوين الحقول والقوائم بخط عريض وواضح بلون داكن مميز */
+    /* عناوين الحقول والقوائم بخط عريض وواضح جداً */
     .stSelectbox label p, .stFileUploader label p, div[data-baseweb="select"] label, label {
         font-weight: 900 !important;
         font-size: 17px !important;
         color: #1A252F !important;
     }
     
-    /* تلوين خانات القوائم المنسدلة بلون أصفر بارد وهادئ */
+    /* خلفية خانات القوائم المنسدلة بلون أصفر بارد وهادئ */
     div[data-baseweb="select"] > div {
         background-color: #FFFDEB !important;
         border-radius: 10px !important;
         border: 2px solid #F1C40F !important;
     }
 
-    /* تلوين خانة رفع الملفات بلون أصفر بارد وهادئ */
+    /* خلفية خانة رفع الملفات بلون أصفر بارد وهادئ */
     div.stFileUploader > div {
         background-color: #FFFDEB !important;
         border-radius: 10px !important;
@@ -67,6 +60,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
+
+# مشغل موسيقى بيانو كلاسيكية هادئة (يعمل بضغطة واحدة لتجاوز حظر المتصفحات)
+st.markdown("🎹 **موسيقى بيانو كلاسيكية هادئة للمساعدة في التركيز أثناء العمل:**")
+st.audio("https://upload.wikimedia.org/wikipedia/commons/e/e4/Beethoven_Fur_Elise_WoO_59_%28Part_1%29.ogg", format="audio/ogg", autoplay=True, loop=True)
+
 st.markdown("---")
 
 # جلب مفتاح الـ API حصرياً من الأسرار البرمجية (Secrets) دون إظهاره في الواجهة
