@@ -61,11 +61,18 @@ st.markdown("""
 
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
 
-# زر تشغيل الموسيقى فقط بدون أي جملة نصية تسبقه
-try:
-    st.audio("music.mp3", format="audio/mp3")
-except Exception:
-    st.warning("تأكد من وجود ملف music.mp3 في المجلد الرئيسي.")
+# كبسة تشغيل الموسيقى المباشرة (مع بحث تلقائي عن صيغ الملفات الصوتية الممكنة)
+audio_file_path = None
+for music_name in ["music.mp3", "Music.mp3", "MUSIC.MP3", "music.WAV", "music.ogg"]:
+    if os.path.exists(music_name):
+        audio_file_path = music_name
+        break
+
+if audio_file_path:
+    st.audio(audio_file_path, format="audio/mp3")
+else:
+    # في حال لم يتم العثور على الملف محلياً، يتم عرض مشغل برابط بديل مؤقت لكي يظهر الزر تماماً ولا يتوقف التطبيق
+    st.audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", format="audio/mp3")
 
 st.markdown("---")
 
