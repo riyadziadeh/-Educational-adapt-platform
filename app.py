@@ -14,9 +14,18 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
-# تخصيص CSS لتلوين الخانات بالأصفر الهادئ وجعل الخطوط عريضة (Bold)
+# تخصيص CSS لتلوين الخانات بالأصفر الهادئ، جعل الخطوط عريضة (Bold)، وإضافة تأثير الـ Animation
 st.markdown("""
     <style>
+    /* تأثير الحركة الانسيابية (Animation) لصندوق الشكر */
+    @keyframes fadeInScale {
+        0% { opacity: 0; transform: scale(0.95); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+    .animated-box {
+        animation: fadeInScale 0.8s ease-in-out;
+    }
+
     /* عناوين الحقول والقوائم بخط عريض وواضح جداً */
     .stSelectbox label p, .stFileUploader label p, div[data-baseweb="select"] label, label {
         font-weight: 900 !important;
@@ -255,9 +264,6 @@ else:
                             break
 
                 if adapted_text:
-                    # نغمة تنبيه صوتية فورية فور الانتهاء من المعالجة
-                    st.audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg", format="audio/ogg", autoplay=True)
-                    
                     st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
                     st.markdown("### ورقة العمل المطورة ثنائية اللغة / Bilingual Adapted Worksheet:")
                     st.markdown(adapted_text)
@@ -294,11 +300,11 @@ else:
                             mime="application/pdf"
                         )
 
-                    # رسالة الشكر المطلوبة ثنائية اللغة في نهاية الصفحة
+                    # رسالة الشكر المنسقة نحوياً وبدون كلمة مهم مع تأثير الحركة (Animation)
                     st.markdown("---")
                     st.markdown("""
-                        <div style="background-color: #FFFDEB; border: 2px solid #F1C40F; padding: 15px; border-radius: 10px; text-align: center; margin-top: 20px;">
-                            <h3 style="color: #2C3E50; margin: 0; font-weight: 900;">مهماً! شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
-                            <h4 style="color: #34495E; margin: 5px 0 0 0; font-weight: 900;">Important! Thank you for using Edu Worksheet Adapt</h4>
+                        <div class="animated-box" style="background-color: #FFFDEB; border: 2px solid #F1C40F; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
+                            <h3 style="color: #2C3E50; margin: 0; font-weight: 900; line-height: 1.6;">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
+                            <h4 style="color: #34495E; margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
                         </div>
                     """, unsafe_allow_html=True)
