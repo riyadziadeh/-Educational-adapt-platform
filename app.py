@@ -16,17 +16,12 @@ st.set_page_config(page_title="تكييف أوراق العمل بالذكاء �
 st.title("📚 نظام تكييف أوراق العمل التربوية / Educational Worksheet Adaptation System")
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
 
-# جلب مفتاح الـ API بأمان
-api_key = None
-try:
-    api_key = st.secrets["GOOGLE_API_KEY"]
-except:
-    pass
+# جلب مفتاح الـ API حصرياً من إعدادات الأمان السرية للسيرفر (Streamlit Secrets)
+api_key = st.secrets.get("GOOGLE_API_KEY")
 
 if not api_key:
-    api_key = st.text_input("أدخل مفتاح Google Gemini API Key / Enter API Key:", type="password")
-
-if api_key:
+    st.error("⚠️ تنبيه برمجي: لم يتم العثور على مفتاح 'GOOGLE_API_KEY' في إعدادات السيرفر السرية (Secrets). يرجى إضافته من لوحة تحكم التطبيق لكي يعمل الذكاء الاصطناعي بسلاسة.")
+else:
     genai.configure(api_key=api_key)
     MODEL_NAME = "gemini-3.6-flash"
 
@@ -111,10 +106,8 @@ if api_key:
         bio.seek(0)
         return bio
 
-    # دالة توليد بوربوينت احترافي بتصميم أنيق (Prezi-Style Flow: شرائح تفاعلية متسلسلة)
     def create_ppt_file(text):
         prs = Presentation()
-        # شريحة الغلاف بنمط تفاعلي أنيق
         slide_layout = prs.slide_layouts[0]
         slide = prs.slides.add_slide(slide_layout)
         title = slide.shapes.title
@@ -122,9 +115,8 @@ if api_key:
         title.text = "Educational Worksheet Adaptation"
         subtitle.text = f"النظام التربوي المطور - كلية تراسانطة / {selected_grade}"
 
-        # تقسيم المحتوى إلى شرائح متسلسلة تحاكي العروض التفاعلية (Prezi style)
         lines = [line.strip() for line in text.split('\n') if line.strip()]
-        chunk_size = 5  # عدد الأسطر في كل شريحة لضمان جمال العرض وبصرياته
+        chunk_size = 5  
         for i in range(0, len(lines), chunk_size):
             chunk = lines[i:i+chunk_size]
             bullet_slide_layout = prs.slide_layouts[1]
@@ -219,5 +211,3 @@ if api_key:
 
                 except Exception as e:
                     st.error(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي / Error: {str(e)}")
-else:
-    st.info("الرجاء إدخال مفتاح الـ API الخاص بك في الأعلى لتشغيل التطبيق / Please enter your API key above.")
