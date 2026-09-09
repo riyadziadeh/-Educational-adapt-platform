@@ -13,6 +13,14 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
+# تشغيل موسيقى البيانو كلاسيكية تلقائياً في الخلفية بدون ظهور أي مشغل مرئي
+st.markdown("""
+    <audio autoplay loop style="display:none;">
+        <source src="https://upload.wikimedia.org/wikipedia/commons/e/e4/Beethoven_Fur_Elise_WoO_59_%28Part_1%29.ogg" type="audio/ogg">
+        متصفحك لا يدعم تشغيل الصوت التلقائي.
+    </audio>
+""", unsafe_allow_html=True)
+
 # تخصيص التصميم (CSS) لجعل العناوين بخط عريض، وخلفية الخانات بلون أصفر بارد وهادئ (#FFF9E6)
 st.markdown("""
     <style>
@@ -52,13 +60,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
-
-# إضافة مشغل موسيقى بيانو كلاسيكي ناعم وهادئ أثناء العمل
-st.markdown("🎹 **موسيقى بيانو كلاسيكية هادئة للمساعدة في التركيز والعمل:**")
-# رابط مباشر لقطعة بيانو كلاسيكية خفيفة ومستقرة
-piano_audio_url = "https://actions.google.com/sounds/v1/ambiences/coffee_shop.ogg" # استخدام مؤثر هادئ أو رابط بيانو امن
-st.audio("https://upload.wikimedia.org/wikipedia/commons/e/e4/Beethoven_Fur_Elise_WoO_59_%28Part_1%29.ogg", format="audio/ogg")
-
 st.markdown("---")
 
 # جلب مفتاح الـ API حصرياً من الأسرار البرمجية (Secrets) دون إظهاره في الواجهة
