@@ -73,7 +73,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
+st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغة المختارة مع خيارات التحميل المتعددة.")
 
 # مشغل الموسيقى الخلفي الخاص بك مع إعادة التشغيل التلقائي (loop) وبدون أي نصوص تسبقه
 audio_file_path = None
@@ -120,6 +120,31 @@ else:
         "معان / Ma'an", "الطفيلة / Tafilah", "العقبة / Aqaba"
     ]
 
+    # قائمة المواد الدراسية الأساسية للنظامين الوطني والدولي
+    subjects = [
+        "الرياضيات / Mathematics / Mathématiques",
+        "العلوم / Science / Sciences",
+        "اللغة العربية / Arabic Language",
+        "اللغة الإنجليزية / English Language",
+        "اللغة الفرنسية / French Language / Langue Française",
+        "التربية الإسلامية / Islamic Education",
+        "الدراسات الاجتماعية / Social Studies / Études Sociales",
+        "الفيزياء / Physics / Physique",
+        "الكيمياء / Chemistry / Chimie",
+        "الأحياء / Biology / Biologie",
+        "الحاسوب وتكنولوجيا المعلومات / Computer Science & IT",
+        "الفنون والتربية المهنية / Arts & Vocational Education"
+    ]
+
+    # خانة اختيار اللغات الأساسية
+    languages = [
+        "ثنائي اللغة (عربي / إنجليزي) - Bilingual (Arabic / English)",
+        "ثنائي اللغة (عربي / فرنسي) - Bilingual (Arabic / French)",
+        "اللغة الفرنسية بالكامل - Pure French (Français)",
+        "اللغة الإنجليزية بالكامل - Pure English",
+        "اللغة العربية بالكامل - Pure Arabic"
+    ]
+
     special_conditions_categories = {
         "1. الإعاقات الحسية والجسدية / Sensory & Physical Disabilities": [
             "الإعاقة البصرية (كف تام أو ضعف بصر شديد / بريل ومطبوعات كبيرة) / Visual Impairment (Blind/Low Vision - Braille & Large Print)",
@@ -148,8 +173,11 @@ else:
         ]
     }
 
+    # واجهة الإدخال المحدثة
     selected_grade = st.selectbox("اختر الصف الدراسي / Select Grade:", grades)
     selected_system = st.selectbox("اختر النظام التعليمي / Select Educational System:", educational_systems)
+    selected_subject = st.selectbox("اختر المادة الدراسية / Select Subject / Matière:", subjects)
+    selected_language = st.selectbox("اختر لغة التكييف والمخرجات / Select Output Language / Langue:", languages)
     selected_gov = st.selectbox("اختر محافظة المدرسة في الأردن / Select Governorate in Jordan:", jordan_governorates)
     
     selected_category = st.selectbox("اختر فئة الحالة الخاصة / Select Special Condition Category:", list(special_conditions_categories.keys()))
@@ -251,9 +279,11 @@ else:
                 if generate_alternative:
                     prompt = f"""
                     أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
-                    بناءً على محتوى ورقة العمل المستخرجة أدناه، يرجى تصميم وابتكار **ورقة عمل بديلة مقترحة بالكامل** بالإضافة إلى **بنك أسئلة تقييمي تشخيصي** يناسب الحالة الخاصة المحددة ومستوى التكييف المطلوب ({selected_level}), مع توفير المصطلحات باللغتين العربية والإنجليزية:
+                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject})، يرجى تصميم وابتكار **ورقة عمل بديلة مقترحة بالكامل** بالإضافة إلى **بنك أسئلة تقييمي تشخيصي** يناسب الحالة الخاصة المحددة ومستوى التكييف المطلوب ({selected_level}), مع الالتزام بلغة المخرجات المطلوبة ({selected_language}):
                     - الصف الدراسي / Grade: {selected_grade}
                     - النظام التعليمي / System: {selected_system}
+                    - المادة الدراسية / Subject: {selected_subject}
+                    - لغة المخرجات / Output Language: {selected_language}
                     - موقع المدرسة (المحافظة) / Governorate: {selected_gov} - الأردن
                     - التصنيف والحالة الخاصة / Condition: {selected_category} -> {selected_condition}
                     - مستوى التكييف / Level: {selected_level}
@@ -261,17 +291,16 @@ else:
                     محتوى ورقة العمل الأصلية:
                     {extracted_content}
                     
-                    يرجى تنظيم المخرجات بطريقة تربوية احترافية ثنائية اللغة (عربي/إنجليزي) تشمل:
-                    1. أهداف التعلم البديلة.
-                    2. ورقة العمل البديلة المبسطة والمكيفة.
-                    3. بنك أسئلة تقييمي مقترح يناسب قدرات الطالب مع إجاباتها النموذجية.
+                    يرجى تنظيم المخرجات بطريقة تربوية احترافية تراعي الفروق الفردية وإرشادات الدمج الشامل.
                     """
                 else:
                     prompt = f"""
                     أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
-                    يرجى تكييف وتطوير ورقة العمل التالية بدقة فائقة وبناءً على مستوى التكييف المطلوب ({selected_level}) مع توفير المصطلحات باللغتين العربية والإنجليزية:
+                    يرجى تكييف وتطوير ورقة العمل التالية لمادة ({selected_subject}) بدقة فائقة وبناءً على مستوى التكييف المطلوب ({selected_level}) مع الالتزام بلغة المخرجات المطلوبة ({selected_language}):
                     - الصف الدراسي / Grade: {selected_grade}
                     - النظام التعليمي / System: {selected_system}
+                    - المادة الدراسية / Subject: {selected_subject}
+                    - لغة المخرجات / Output Language: {selected_language}
                     - موقع المدرسة (المحافظة) / Governorate: {selected_gov} - الأردن
                     - التصنيف والحالة الخاصة / Condition: {selected_category} -> {selected_condition}
                     - مستوى التكييف / Level: {selected_level}
@@ -279,7 +308,7 @@ else:
                     محتوى ورقة العمل المستخرج من الملف:
                     {extracted_content}
                     
-                    يرجى إعادة صياغة ورقة العمل الأصلية وتنظيمها بطريقة تربوية احترافية ثنائية اللغة (عربي/إنجليزي) تراعي الفروق الفردية وإرشادات الدمج الشامل.
+                    يرجى إعادة صياغة ورقة العمل الأصلية وتنظيمها بطريقة تربوية احترافية تراعي الفروق الفردية وإرشادات الدمج الشامل.
                     """
                 
                 adapted_text = None
@@ -307,6 +336,8 @@ else:
                     adapted_text = f"""
 ### ورقة العمل المطورة والمكيفة (نسخة تجريبية / Mock Adapted Worksheet)
 - **الصف الدراسي / Grade:** {selected_grade}
+- **المادة الدراسية / Subject:** {selected_subject}
+- **لغة المخرجات / Language:** {selected_language}
 - **النظام التعليمي / System:** {selected_system}
 - **المحافظة / Governorate:** {selected_gov} - الأردن
 - **التصنيف التربوي / Condition:** {selected_category} -> {selected_condition}
@@ -315,21 +346,19 @@ else:
 ---
 
 #### 1. الأهداف التربوية المعدلة / Adapted Learning Objectives:
-* **عربي:** تسهيل استيعاب المفاهيم الأساسية، وتبسيط الأسئلة بصرياً وحسياً بما يتناسب مع حالة الدمج المحددة.
-* **English:** Facilitate core concept understanding and simplify questions visually and sensorily according to the specified inclusion condition.
+* تسهيل استيعاب المفاهيم الأساسية، وتبسيط الأسئلة بصرياً وحسياً بما يتناسب مع حالة الدمج المحددة ومادة {selected_subject}.
 
 #### 2. محتوى ورقة العمل المكيفة / Adapted Worksheet Content:
-* **السؤال الأول / Question 1:** تمرين تفصيلي مبسط يعتمد على الصور والمدلولات البصرية المباشرة.
-* **السؤال الثاني / Question 2:** اختيار من متعدد مصمم خصيصاً لتجنب التشتت البصرى والحركي.
+* **السؤال الأول / Question 1:** تمرين تفصيلي مبسط ومخصص لمادة {selected_subject} يعتمد على المدلولات البصرية المباشرة.
+* **السؤال الثاني / Question 2:** اختيار من متعدد مصمم لتجنب التشتت وتسهيل الفهم.
 
 #### 3. التعزيز الإيجابي / Positive Reinforcement:
-* **عربي:** "أحسنت يا بطل! عمل رائع ومميز."
-* **English:** "Great job! Excellent and outstanding work."
+* "أحسنت يا بطل! عمل رائع ومميز في {selected_subject}."
                     """
 
                 if adapted_text:
                     st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
-                    st.markdown("### ورقة العمل المطورة ثنائية اللغة / Bilingual Adapted Worksheet:")
+                    st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
                     st.markdown(adapted_text)
                     
                     st.markdown("---")
@@ -342,7 +371,7 @@ else:
                         st.download_button(
                             label="تحميل Word (.docx)",
                             data=word_data,
-                            file_name="Bilingual_Adapted_Worksheet.docx",
+                            file_name="Adapted_Worksheet.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         )
                         
@@ -360,7 +389,7 @@ else:
                         st.download_button(
                             label="تحميل PDF (.pdf)",
                             data=pdf_data,
-                            file_name="Bilingual_Adapted_Worksheet.pdf",
+                            file_name="Adapted_Worksheet.pdf",
                             mime="application/pdf"
                         )
 
