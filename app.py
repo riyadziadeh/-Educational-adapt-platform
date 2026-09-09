@@ -13,12 +13,16 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
-# عرض الشعار الأفقي الجديد باسم logo.png مباشرة وبشكل مركز وواضح
-col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
+# عرض الصورة بشكل مركز وواضح تماماً فوق العنوان مباشرة
+col_logo1, col_logo2, col_logo3 = st.columns([1, 1.5, 1])
 with col_logo2:
-    try:
-        st.image("logo.png", width=300)
-    except Exception:
+    logo_loaded = False
+    for filename in ["logo.png", "logo.jpg", "Logo.png", "Logo.JPG"]:
+        if os.path.exists(filename):
+            st.image(filename, width=280)
+            logo_loaded = True
+            break
+    if not logo_loaded:
         st.warning("الرجاء التأكد من رفع صورة الشعار باسم logo.png في نفس مجلد المشروع.")
 
 # العنوان الرئيسي للنظام تحت الشعار مباشرة
