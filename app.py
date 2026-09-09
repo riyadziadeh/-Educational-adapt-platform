@@ -1,6 +1,7 @@
 import os
 import io
 import time
+import urllib.parse
 import streamlit as st
 import google.generativeai as genai
 from docx import Document
@@ -75,7 +76,7 @@ st.markdown("""
 
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
 
-# مشغل الموسيقى الخاص بك مع إعادة التشغيل التلقائي (loop) وبدون أي نصوص تسبقه
+# مشغل الموسيقى الخلفي الخاص بك مع إعادة التشغيل التلقائي (loop) وبدون أي نصوص تسبقه
 audio_file_path = None
 for music_name in ["music.mp3", "Music.mp3", "MUSIC.MP3", "music.WAV", "music.ogg"]:
     if os.path.exists(music_name):
@@ -332,10 +333,16 @@ else:
                     st.markdown("### ورقة العمل المطورة ثنائية اللغة / Bilingual Adapted Worksheet:")
                     st.markdown(adapted_text)
                     
-                    # مشغل صوت تفاعلي جاهز وخالٍ من الأخطاء
+                    # مشغل صوتي مخصص لقراءة النص حصرياً (Text-to-Speech صامت وخالٍ من الموسيقى)
                     st.markdown("---")
-                    st.markdown("🔊 **استماع صوتي مباشر للنص المطور / Direct Audio Text-to-Speech Accessibility:**")
-                    st.audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", format="audio/mp3")
+                    st.markdown("🔊 **استماع صوتي مباشر لقراءة النص المطور / Direct Text-to-Speech Audio:**")
+                    
+                    # تنظيف النص وتجهيزه للرابط الصوتي الآمن
+                    clean_speech_text = adapted_text.replace("#", "").replace("*", "").replace("-", "")[:200]
+                    encoded_text = urllib.parse.quote(clean_speech_text)
+                    tts_audio_url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={encoded_text}&tl=ar&client=tw-ob"
+                    
+                    st.audio(tts_audio_url, format="audio/mp3")
 
                     st.markdown("---")
                     st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
