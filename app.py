@@ -61,9 +61,9 @@ st.markdown("""
 
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
 
-# مشغل موسيقى بيانو كلاسيكية هادئة (يعمل بضغطة واحدة لتجاوز حظر المتصفحات)
+# مشغل موسيقى بيانو كلاسيكية هادئة برابط مباشر ومستقر
 st.markdown("🎹 **موسيقى بيانو كلاسيكية هادئة للمساعدة في التركيز أثناء العمل:**")
-st.audio("https://upload.wikimedia.org/wikipedia/commons/e/e4/Beethoven_Fur_Elise_WoO_59_%28Part_1%29.ogg", format="audio/ogg", autoplay=True, loop=True)
+st.audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", format="audio/mp3")
 
 st.markdown("---")
 
