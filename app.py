@@ -13,6 +13,24 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
+# تخصيص التصميم (CSS) لجعل العناوين بخط عريض، وخلفية الخانات بلون أصفر بارد وهادئ (#FFF9E6)
+st.markdown("""
+    <style>
+    /* عناوين القوائم بخط عريض وواضح */
+    .stSelectbox label, .stFileUploader label {
+        font-weight: bold !important;
+        font-size: 16px !important;
+        color: #2C3E50 !important;
+    }
+    /* خلفية خانات الاختيار والرفع بلون أصفر بارد وهادئ */
+    div[data-baseweb="select"] > div, div.stFileUploader {
+        background-color: #FFF9E6 !important;
+        border-radius: 8px !important;
+        border: 1px solid #F39C12 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # عرض الشعار الأفقي الجديد بجودة عالية وبحجم عريض في منتصف الصفحة تماماً
 col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
 with col_logo2:
@@ -28,12 +46,20 @@ with col_logo2:
 # العنوان الرئيسي للنظام تحت الشعار مباشرة
 st.markdown("""
     <div style="text-align: center;">
-        <h1 style="font-size: 28px; margin-bottom: 0;">نظام تكييف أوراق العمل التربوية</h1>
-        <h2 style="font-size: 22px; margin-top: 5px; color: #555;">Educational Worksheet Adaptation System</h2>
+        <h1 style="font-size: 28px; margin-bottom: 0; font-weight: bold;">نظام تكييف أوراق العمل التربوية</h1>
+        <h2 style="font-size: 22px; margin-top: 5px; color: #555; font-weight: bold;">Educational Worksheet Adaptation System</h2>
     </div>
 """, unsafe_allow_html=True)
 
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
+
+# إضافة مشغل موسيقى بيانو كلاسيكي ناعم وهادئ أثناء العمل
+st.markdown("🎹 **موسيقى بيانو كلاسيكية هادئة للمساعدة في التركيز والعمل:**")
+# رابط مباشر لقطعة بيانو كلاسيكية خفيفة ومستقرة
+piano_audio_url = "https://actions.google.com/sounds/v1/ambiences/coffee_shop.ogg" # استخدام مؤثر هادئ أو رابط بيانو امن
+st.audio("https://upload.wikimedia.org/wikipedia/commons/e/e4/Beethoven_Fur_Elise_WoO_59_%28Part_1%29.ogg", format="audio/ogg")
+
+st.markdown("---")
 
 # جلب مفتاح الـ API حصرياً من الأسرار البرمجية (Secrets) دون إظهاره في الواجهة
 api_key = None
@@ -129,7 +155,6 @@ else:
         bio.seek(0)
         return bio
 
-    # دالة توليد بوربوينت احترافي بتصميم أنيق (Prezi-Style Flow: شرائح تفاعلية متسلسلة)
     def create_ppt_file(text):
         prs = Presentation()
         slide_layout = prs.slide_layouts[0]
