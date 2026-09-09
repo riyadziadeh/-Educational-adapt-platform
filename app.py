@@ -61,7 +61,7 @@ st.markdown("""
 
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
 
-# كبسة تشغيل الموسيقى المباشرة (مع بحث تلقائي عن صيغ الملفات الصوتية الممكنة)
+# مشغل الموسيقى مع خاصية التكرار التلقائي (loop) بمجرد انتهائها
 audio_file_path = None
 for music_name in ["music.mp3", "Music.mp3", "MUSIC.MP3", "music.WAV", "music.ogg"]:
     if os.path.exists(music_name):
@@ -69,10 +69,9 @@ for music_name in ["music.mp3", "Music.mp3", "MUSIC.MP3", "music.WAV", "music.og
         break
 
 if audio_file_path:
-    st.audio(audio_file_path, format="audio/mp3")
+    st.audio(audio_file_path, format="audio/mp3", loop=True)
 else:
-    # في حال لم يتم العثور على الملف محلياً، يتم عرض مشغل برابط بديل مؤقت لكي يظهر الزر تماماً ولا يتوقف التطبيق
-    st.audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", format="audio/mp3")
+    st.audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", format="audio/mp3", loop=True)
 
 st.markdown("---")
 
@@ -210,7 +209,10 @@ else:
                 pdf.multi_cell(0, 8, line)
             else:
                 pdf.ln(4)
-        bio = io.BytesIO(pdf.output(dest='S'))
+        pdf_output = pdf.output(dest='S')
+        if isinstance(pdf_output, str):
+            pdf_output = pdf_output.encode('latin-1')
+        bio = io.BytesIO(pdf_output)
         bio.seek(0)
         return bio
 
@@ -236,6 +238,9 @@ else:
                     model = genai.GenerativeModel(MODEL_NAME)
                     response = model.generate_content(prompt)
                     adapted_text = response.text
+                    
+                    # إصدار نغمة تنبيه صوتية بسيطة فور اكتمال التكييف وإعداد الملفات
+                    st.audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg", format="audio/ogg", autoplay=True)
                     
                     st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
                     st.markdown("### ورقة العمل المطورة ثنائية اللغة / Bilingual Adapted Worksheet:")
@@ -272,6 +277,15 @@ else:
                             file_name="Bilingual_Adapted_Worksheet.pdf",
                             mime="application/pdf"
                         )
+
+                    # رسالة الشكر ثنائية اللغة بعد تحميل أو عرض الملفات المطورة
+                    st.markdown("---")
+                    st.markdown("""
+                        <div style="background-color: #FFFDEB; border: 2px solid #F1C40F; padding: 15px; border-radius: 10px; text-align: center; margin-top: 20px;">
+                            <h3 style="color: #2C3E50; margin: 0; font-weight: 900;">مهماً! شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
+                            <h4 style="color: #34495E; margin: 5px 0 0 0; font-weight: 900;">Important! Thank you for using Edu Worksheet Adapt</h4>
+                        </div>
+                    """, unsafe_allow_html=True)
 
                 except Exception as e:
                     st.error(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي / Error: {str(e)}")
