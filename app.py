@@ -1,5 +1,6 @@
 import os
 import io
+import time
 import streamlit as st
 import google.generativeai as genai
 from docx import Document
@@ -61,7 +62,7 @@ st.markdown("""
 
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغتين مع خيارات التحميل المتعددة.")
 
-# مشغل الموسيقى مع خاصية التكرار التلقائي (loop) بمجرد انتهائها
+# مشغل الموسيقى الخاص بك مع إعادة التشغيل التلقائي (loop) وبدون أي نصوص تسبقه
 audio_file_path = None
 for music_name in ["music.mp3", "Music.mp3", "MUSIC.MP3", "music.WAV", "music.ogg"]:
     if os.path.exists(music_name):
@@ -86,7 +87,8 @@ if not api_key:
     st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) لتشغيل النظام.")
 else:
     genai.configure(api_key=api_key)
-    MODEL_NAME = "gemini-3.6-flash"
+    # استخدام أحدث نموذج ذكاء اصطناعي متطور من قوقل (Gemini 3.8 Flash)
+    MODEL_NAME = "gemini-3.8-flash"
 
     # القوائم ثنائية اللغة بالكامل
     grades = [
@@ -220,7 +222,7 @@ else:
         if not extracted_content.strip():
             st.warning("الرجاء رفع ملف ورقة العمل أولاً / Please upload a file first.")
         else:
-            with st.spinner("جاري معالجة ورقة العمل وتكييفها باللغتين... / Processing..."):
+            with st.spinner("جاري معالجة ورقة العمل باستخدام أحدث تقنيات الذكاء الاصطناعي... / Processing..."):
                 prompt = f"""
                 أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
                 يرجى تكييف وتطوير ورقة العمل التالية بدقة فائقة مع توفير المصطلحات باللغتين العربية والإنجليزية:
@@ -234,12 +236,26 @@ else:
                 
                 يرجى إعادة صياغة ورقة العمل وتنظيمها بطريقة تربوية احترافية ثنائية اللغة (عربي/إنجليزي) تراعي الفروق الفردية وإرشادات الدمج الشامل.
                 """
-                try:
-                    model = genai.GenerativeModel(MODEL_NAME)
-                    response = model.generate_content(prompt)
-                    adapted_text = response.text
-                    
-                    # إصدار نغمة تنبيه صوتية بسيطة فور اكتمال التكييف وإعداد الملفات
+                
+                # آلية إعادة المحاولة الذكية لتفادي أي ضغط على خوادم الـ API
+                adapted_text = None
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        model = genai.GenerativeModel(MODEL_NAME)
+                        response = model.generate_content(prompt)
+                        adapted_text = response.text
+                        break
+                    except Exception as e:
+                        if "429" in str(e) and attempt < max_retries - 1:
+                            time.sleep(8)
+                            continue
+                        else:
+                            st.error(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي / Error: {str(e)}")
+                            break
+
+                if adapted_text:
+                    # نغمة تنبيه صوتية فورية فور الانتهاء من المعالجة
                     st.audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg", format="audio/ogg", autoplay=True)
                     
                     st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
@@ -278,7 +294,7 @@ else:
                             mime="application/pdf"
                         )
 
-                    # رسالة الشكر ثنائية اللغة بعد تحميل أو عرض الملفات المطورة
+                    # رسالة الشكر المطلوبة ثنائية اللغة في نهاية الصفحة
                     st.markdown("---")
                     st.markdown("""
                         <div style="background-color: #FFFDEB; border: 2px solid #F1C40F; padding: 15px; border-radius: 10px; text-align: center; margin-top: 20px;">
@@ -286,6 +302,3 @@ else:
                             <h4 style="color: #34495E; margin: 5px 0 0 0; font-weight: 900;">Important! Thank you for using Edu Worksheet Adapt</h4>
                         </div>
                     """, unsafe_allow_html=True)
-
-                except Exception as e:
-                    st.error(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي / Error: {str(e)}")
