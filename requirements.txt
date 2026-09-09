@@ -1,11 +1,8 @@
 streamlit
-google-generativeai
 python-docx
 python-pptx
 fpdfstreamlit
 google-generativeai
-python-docx
-python-pptx
 fpdf
 pypdf
 gTTS
