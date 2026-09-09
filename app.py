@@ -17,29 +17,36 @@ st.set_page_config(page_title="تكييف أوراق العمل بالذكاء �
 st.markdown("""
     <audio autoplay loop style="display:none;">
         <source src="https://upload.wikimedia.org/wikipedia/commons/e/e4/Beethoven_Fur_Elise_WoO_59_%28Part_1%29.ogg" type="audio/ogg">
-        متصفحك لا يدعم تشغيل الصوت التلقائي.
     </audio>
 """, unsafe_allow_html=True)
 
-# تخصيص التصميم (CSS) لجعل العناوين بخط عريض، وخلفية الخانات بلون أصفر بارد وهادئ (#FFF9E6)
+# تخصيص CSS شامل وقوي جداً لتلوين الحقول باللون الأصفر البارد وجعل الخطوط عريضة (Bold)
 st.markdown("""
     <style>
-    /* عناوين القوائم بخط عريض وواضح */
-    .stSelectbox label, .stFileUploader label {
-        font-weight: bold !important;
-        font-size: 16px !important;
-        color: #2C3E50 !important;
+    /* جعل جميع عناوين الحقول والقوائم بخط عريض وواضح بلون داكن مميز */
+    .stSelectbox label p, .stFileUploader label p, div[data-baseweb="select"] label, label {
+        font-weight: 900 !important;
+        font-size: 17px !important;
+        color: #1A252F !important;
     }
-    /* خلفية خانات الاختيار والرفع بلون أصفر بارد وهادئ */
-    div[data-baseweb="select"] > div, div.stFileUploader {
-        background-color: #FFF9E6 !important;
-        border-radius: 8px !important;
-        border: 1px solid #F39C12 !important;
+    
+    /* تلوين خانات القوائم المنسدلة بلون أصفر بارد وهادئ */
+    div[data-baseweb="select"] > div {
+        background-color: #FFFDEB !important;
+        border-radius: 10px !important;
+        border: 2px solid #F1C40F !important;
+    }
+
+    /* تلوين خانة رفع الملفات بلون أصفر بارد وهادئ */
+    div.stFileUploader > div {
+        background-color: #FFFDEB !important;
+        border-radius: 10px !important;
+        border: 2px solid #F1C40F !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# عرض الشعار الأفقي الجديد بجودة عالية وبحجم عريض في منتصف الصفحة تماماً
+# عرض الشعار الأفقي بجودة عالية وبحجم عريض في منتصف الصفحة تماماً
 col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
 with col_logo2:
     logo_loaded = False
@@ -54,8 +61,8 @@ with col_logo2:
 # العنوان الرئيسي للنظام تحت الشعار مباشرة
 st.markdown("""
     <div style="text-align: center;">
-        <h1 style="font-size: 28px; margin-bottom: 0; font-weight: bold;">نظام تكييف أوراق العمل التربوية</h1>
-        <h2 style="font-size: 22px; margin-top: 5px; color: #555; font-weight: bold;">Educational Worksheet Adaptation System</h2>
+        <h1 style="font-size: 28px; margin-bottom: 0; font-weight: 900; color: #2C3E50;">نظام تكييف أوراق العمل التربوية</h1>
+        <h2 style="font-size: 22px; margin-top: 5px; color: #34495E; font-weight: 900;">Educational Worksheet Adaptation System</h2>
     </div>
 """, unsafe_allow_html=True)
 
