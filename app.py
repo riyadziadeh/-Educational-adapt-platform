@@ -100,8 +100,6 @@ if not api_key:
     st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) لتشغيل النظام.")
 else:
     genai.configure(api_key=api_key)
-    # استخدام أحدث نموذج ذكاء اصطناعي متطور من قوقل (Gemini 3.8 Flash)
-    MODEL_NAME = "gemini-3.8-flash"
 
     # القوائم ثنائية اللغة بالكامل
     grades = [
@@ -167,7 +165,7 @@ else:
     ]
     selected_level = st.selectbox("اختر مستوى وطبيعة التكييف / Select Adaptation Level:", adaptation_levels)
 
-    # الاقتراح الأول (اختياري): اختيار توليد ورقة عمل بديلة مقترحة مع بنك أسئلة تقييمي
+    # الخيار الأول (اختياري): توليد ورقة عمل بديلة مقترحة مع بنك أسئلة تقييمي
     generate_alternative = st.checkbox(
         "توليد ورقة عمل بديلة مقترحة مع بنك أسئلة تقييمي (اختياري) / Generate an alternative worksheet with an assessment quiz",
         value=False
@@ -287,22 +285,27 @@ else:
                     يرجى إعادة صياغة ورقة العمل الأصلية وتنظيمها بطريقة تربوية احترافية ثنائية اللغة (عربي/إنجليزي) تراعي الفروق الفردية وإرشادات الدمج الشامل.
                     """
                 
-                # آلية إعادة المحاولة الذكية لتفادي أي ضغط على خوادم الـ API
+                # قائمة النماذج للاستخدام المتبادل (Fallback) تفادياً لخطأ 429
+                models_to_try = ["gemini-3.8-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
                 adapted_text = None
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        model = genai.GenerativeModel(MODEL_NAME)
-                        response = model.generate_content(prompt)
-                        adapted_text = response.text
-                        break
-                    except Exception as e:
-                        if "429" in str(e) and attempt < max_retries - 1:
-                            time.sleep(8)
-                            continue
-                        else:
-                            st.error(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي / Error: {str(e)}")
+
+                for model_name in models_to_try:
+                    success_with_model = False
+                    for attempt in range(2):
+                        try:
+                            model = genai.GenerativeModel(model_name)
+                            response = model.generate_content(prompt)
+                            adapted_text = response.text
+                            success_with_model = True
                             break
+                        except Exception as e:
+                            if "429" in str(e):
+                                time.sleep(5)
+                                continue
+                            else:
+                                break
+                    if success_with_model and adapted_text:
+                        break
 
                 if adapted_text:
                     st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
@@ -354,3 +357,5 @@ else:
                             <h4 style="color: #34495E; margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
                         </div>
                     """, unsafe_allow_html=True)
+                else:
+                    st.error("عذراً، تم الوصول للحد الأقصى من الطلبات للخطورة المجانية مؤقتاً. يرجى الانتظار لمدة دقيقة والمحاولة مرة أخرى. / Rate limit exceeded, please wait a minute.")
