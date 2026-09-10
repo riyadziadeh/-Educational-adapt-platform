@@ -11,21 +11,12 @@ from pptx.enum.text import PP_ALIGN
 from fpdf import FPDF
 import pypdf
 
-# إعداد صفحة ستريمليت مع تعيين الأيقونة الخاصة بك في المتصفح
-st.set_page_config(
-    page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", 
-    page_icon="Educ_Worksheet_Adapt_Icon_(Square).png", 
-    layout="centered"
-)
+# إعداد صفحة ستريمليت
+st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
-# تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً + إخفاء أيقونة GitHub فقط
+# تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً
 st.markdown("""
     <style>
-    /* إخفاء أيقونة GitHub وحدها من الشريط العلوي */
-    .stAppToolbar [data-testid="stToolbarActions"] {
-        display: none !important;
-    }
-
     /* تأثير الحركة الانسيابية (Animation) لصندوق الشكر */
     @keyframes fadeInScale {
         0% { opacity: 0; transform: scale(0.95); }
@@ -293,31 +284,37 @@ else:
                 
                 if generate_alternative:
                     prompt = f"""
-                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن. 
-                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject})، مطلوب منك **تصميم وابتكار ورقة عمل بديلة مقترحة بالكامل بالتفصيل الكامل غير المقتضب** بالإضافة إلى **بنك أسئلة تقييمي تشخيصي مع الحلول** يناسب الحالة الخاصة المحددة ({selected_condition}) ومستوى التكييف ({selected_level}).
+                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
+                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject}), يرجى تصميم وابتكار **ورقة عمل بديلة مقترحة بالكامل** بالإضافة إلى **بنك أسئلة تقييمي تشخيصي** يناسب الحالة الخاصة المحددة ومستوى التكييف المطلوب ({selected_level}), مع الالتزام بلغة المخرجات المطلوبة ({selected_language}):
+                    - الصف الدراسي / Grade: {selected_grade}
+                    - النظام التعليمي / System: {selected_system}
+                    - المادة الدراسية / Subject: {selected_subject}
+                    - لغة المخرجات / Output Language: {selected_language}
+                    - موقع المدرسة (المحافظة) / Governorate: {selected_gov} - الأردن
+                    - التصنيف والحالة الخاصة / Condition: {selected_category} -> {selected_condition}
+                    - مستوى التكييف / Level: {selected_level}
                     
-                    التفاصيل الأساسية:
-                    - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
-                    - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
-                    
-                    محتوى ورقة العمل الأصلية للاستئناس:
+                    محتوى ورقة العمل الأصلية:
                     {extracted_content}
                     
-                    **تنبيه هام جداً:** لا تكتفِ أبداً بشرح عام أو ملخص، بل قم بكتابة أسئلة ورقة العمل كاملة، والتمارين، والخيارات، والحلول النموذجية بخطوات واضحة ومرتبة تربوياً.
+                    يرجى تنظيم المخرجات بطريقة تربوية احترافية تراعي الفروق الفردية وإرشادات الدمج الشامل.
                     """
                 else:
                     prompt = f"""
-                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن. 
-                    مطلوب منك **تكييف وتطوير ورقة العمل التالية بالكامل وبشكل تفصيلي شامل ودقيق** لمادة ({selected_subject}) بناءً على مستوى التكييف ({selected_level}) والحالة الخاصة ({selected_condition}).
-                    
-                    التفاصيل الأساسية:
-                    - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
-                    - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
+                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
+                    يرجى تكييف وتطوير ورقة العمل التالية لمادة ({selected_subject}) بدقة فائقة وبناءً على مستوى التكييف المطلوب ({selected_level}) مع الالتزام بلغة المخرجات المطلوبة ({selected_language}):
+                    - الصف الدراسي / Grade: {selected_grade}
+                    - النظام التعليمي / System: {selected_system}
+                    - المادة الدراسية / Subject: {selected_subject}
+                    - لغة المخرجات / Output Language: {selected_language}
+                    - موقع المدرسة (المحافظة) / Governorate: {selected_gov} - الأردن
+                    - التصنيف والحالة الخاصة / Condition: {selected_category} -> {selected_condition}
+                    - مستوى التكييف / Level: {selected_level}
                     
                     محتوى ورقة العمل المستخرج من الملف:
                     {extracted_content}
                     
-                    **تنبيه هام جداً:** ممنوع الاختصار أو الاكتفاء بالوصف العام! اكتب محتوى ورقة العمل المكيف كاملاً، متضمناً الأسئلة المعدلة، التمارين التدريبية، والأنشطة البصرية أو الحسية المرتبطة بالمادة بشكل كامل وواضح.
+                    يرجى إعادة صياغة ورقة العمل الأصلية وتنظيمها بطريقة تربوية احترافية تراعي الفروق الفردية وإرشادات الدمج الشامل.
                     """
                 
                 adapted_text = None
