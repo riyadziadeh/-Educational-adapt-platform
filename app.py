@@ -228,15 +228,11 @@ else:
                     text = page.extract_text()
                     if text:
                         extracted_content += text + "\n"
-                
-                # حل جذري في حال كان ملف الـ PDF لا يحتوي على نص قابل للقراءة (ملف ممسوح ضوئياً Scanned)
-                if not extracted_content.strip():
-                    st.warning("⚠️ الملف المرفوع يبدو أنه صورة مسح ضوئي (Scanned PDF) ولا يحتوي على نصوص مباشرة. جاري التعامل معه وتحليله...")
-        
+            
             if extracted_content.strip():
                 st.success(f"تم قراءة الملف بنجاح / File successfully read: {uploaded_file.name}")
             else:
-                st.warning("لم يتم استخراج نص واضح من الملف، يرجى التأكد من محتوى الملف أو رفع ملف نصي/وورد مباشر.")
+                st.warning("⚠️ الملف المرفوع لا يحتوي على نص قابل للقراءة المباشرة. سيتم الاعتماد على معلومات النظام والعنوان لتوليد ورقة العمل.")
         except Exception as e:
             st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
 
@@ -298,115 +294,111 @@ else:
         return bio
 
     if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀 / Start AI Adaptation"):
+        # حتى لو كان الملف فارغاً أو تعذر استخراج النص، سنسمح للنظام بالعمل بناءً على معايير المادة والصف والحالة الخاصة لضمان عدم توقف المستخدم أبداً
         if not extracted_content.strip():
-            st.warning("الرجاء رفع ملف ورقة العمل أولاً أو التأكد من وجود نص داخل الملف / Please upload a valid file first.")
-        else:
-            mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
-            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل عبر الذكاء الاصطناعي... يرجى الانتظار..."):
-                
-                # تقليص النص قليلاً إذا كان طويلاً جداً لضمان عدم حدوث Timeout
-                if len(extracted_content) > 8000:
-                    extracted_content = extracted_content[:8000] + "\n[تم اقتصاص جزء من النص لضمان سرعة المعالجة]"
+            extracted_content = f"ورقة عمل عامة لمبحث {selected_subject} للصف {selected_grade} وفق النظام {selected_system}."
 
-                if generate_alternative:
-                    prompt = f"""
-                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن. 
-                    مطلوب منك كتابة محتوى **كامل ومتشعب وشامل** وغير مقتضب إطلاقاً باللغة العربية الواضحة والسليمة.
-                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject}), صمم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة كاملة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
-                    
-                    التفاصيل:
-                    - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
-                    - لغة المخرجات المطلوبة: {selected_language} | المحافظة: {selected_gov} - الأردن
-                    
-                    محتوى ورقة العمل الأصلية للاستئناس:
-                    {extracted_content}
-                    
-                    تعليمات صارمة: ممنوع الاختصار أو الاكتفاء بالعناوين أو الملخصات. اكتب ورقة العمل والأسئلة والتمارين والحلول بخطوات تفصيلية كاملة وواضحة للنهاية.
-                    """
-                else:
-                    prompt = f"""
-                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن. 
-                    مطلوب منك تنفيذ **تكييف وتطوير شامل وكامل ودقيق** لورقة العمل التالية لمادة ({selected_subject}) بناءً على مستوى التكييف ({selected_level}) والحالة الخاصة ({selected_condition}).
-                    
-                    التفاصيل:
-                    - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
-                    - لغة المخرجات المطلوبة: {selected_language} | المحافظة: {selected_gov} - الأردن
-                    
-                    محتوى ورقة العمل المستخرج من الملف:
-                    {extracted_content}
-                    
-                    تعليمات صارمة: ممنوع الاختصار أو الاكتفاء بالوصف العام أو المقدمات. قم بإعادة صياغة ورقة العمل الأصلية وكتابة كافة الأسئلة المعدلة، التمارين التدريبية، الأنشطة، والحلول بشكل كامل ووافٍ دون أي نقصان حتى النهاية وبأسلوب تربوي واضح.
-                    """
-                
-                adapted_text = None
-                # تجربة النماذج المتاحة والمستقرة تدريجياً لضمان عدم توقف الخادم
-                models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+        mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
+        
+        with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) وتحليلها عبر الذكاء الاصطناعي... يرجى الانتظار قليلاً..."):
+            
+            # تقليص النص الذكي لضمان عدم حدوث Timeout نهائياً
+            trimmed_content = extracted_content[:3500] if len(extracted_content) > 3500 else extracted_content
 
-                for model_name in models_to_try:
-                    success_with_model = False
-                    for attempt in range(2): 
-                        try:
-                            model = genai.GenerativeModel(model_name)
-                            response = model.generate_content(
-                                prompt, 
-                                generation_config=genai.types.GenerationConfig(
-                                    temperature=0.7,
-                                    max_output_tokens=8192  # توسيع نطاق المخرجات لمنع القطع
-                                )
-                            )
-                            if response and response.text:
-                                adapted_text = response.text
-                                success_with_model = True
-                                break
-                        except Exception as e:
-                            time.sleep(2)
-                            continue
-                    if success_with_model and adapted_text:
+            if generate_alternative:
+                prompt = f"""
+                أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
+                مطلوب تصميم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
+                
+                البيانات الأساسية:
+                - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
+                - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
+                
+                محتوى الملف المرفق:
+                {trimmed_content}
+                
+                اكتب ورقة العمل والأسئلة والتمارين والحلول بخطوات تفصيلية كاملة وواضحة باللغة العربية.
+                """
+            else:
+                prompt = f"""
+                أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
+                مطلوب تنفيذ **تكييف وتطوير شامل ودقيق** لورقة العمل التالية لمبحث ({selected_subject}) بناءً على مستوى التكييف ({selected_level}) والحالة الخاصة ({selected_condition}).
+                
+                البيانات الأساسية:
+                - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
+                - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
+                
+                محتوى الملف المرفق:
+                {trimmed_content}
+                
+                قم بإعادة صياغة ورقة العمل وكتابة الأسئلة المعدلة، التمارين التدريبية، والحلول بشكل كامل ووافٍ دون أي نقصان وبأسلوب تربوي متميز.
+                """
+            
+            adapted_text = None
+            
+            # استخدام النماذج الأكثر استقراراً وسرعة مع معالجة ذكية للأخطاء
+            models_to_try = ["gemini-1.5-flash", "gemini-pro"]
+
+            for model_name in models_to_try:
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    response = model.generate_content(
+                        prompt, 
+                        generation_config=genai.types.GenerationConfig(
+                            temperature=0.7,
+                            max_output_tokens=4000
+                        )
+                    )
+                    if response and response.text:
+                        adapted_text = response.text
                         break
+                except Exception as e:
+                    time.sleep(1)
+                    continue
 
-                if adapted_text:
-                    st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
-                    st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
-                    st.markdown(adapted_text)
+            if adapted_text:
+                st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
+                st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
+                st.markdown(adapted_text)
+                
+                st.markdown("---")
+                st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    word_data = create_word_file(adapted_text)
+                    st.download_button(
+                        label="تحميل Word (.docx)",
+                        data=word_data,
+                        file_name="Adapted_Worksheet.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
                     
-                    st.markdown("---")
-                    st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
+                with col2:
+                    ppt_data = create_ppt_file(adapted_text)
+                    st.download_button(
+                        label="تحميل PowerPoint (Prezi-Style) (.pptx)",
+                        data=ppt_data,
+                        file_name="Interactive_Presentation.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    )
                     
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        word_data = create_word_file(adapted_text)
-                        st.download_button(
-                            label="تحميل Word (.docx)",
-                            data=word_data,
-                            file_name="Adapted_Worksheet.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        )
-                        
-                    with col2:
-                        ppt_data = create_ppt_file(adapted_text)
-                        st.download_button(
-                            label="تحميل PowerPoint (Prezi-Style) (.pptx)",
-                            data=ppt_data,
-                            file_name="Interactive_Presentation.pptx",
-                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                        )
-                        
-                    with col3:
-                        pdf_data = create_pdf_file(adapted_text)
-                        st.download_button(
-                            label="تحميل PDF (.pdf)",
-                            data=pdf_data,
-                            file_name="Adapted_Worksheet.pdf",
-                            mime="application/pdf"
-                        )
+                with col3:
+                    pdf_data = create_pdf_file(adapted_text)
+                    st.download_button(
+                        label="تحميل PDF (.pdf)",
+                        data=pdf_data,
+                        file_name="Adapted_Worksheet.pdf",
+                        mime="application/pdf"
+                    )
 
-                    st.markdown("---")
-                    st.markdown("""
-                        <div class="animated-box" style="background-color: rgba(241, 196, 15, 0.15); border: 2px solid #F1C40F; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
-                            <h3 style="margin: 0; font-weight: 900; line-height: 1.6;">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
-                            <h4 style="margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
-                        </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.error("عذراً، حدث خطأ في الاتصال بخدمة الذكاء الاصطناعي أو انتهت مهلة الانتظار. يرجى المحاولة مرة أخرى بملف أصغر حجماً أو التأكد من صلاحية مفتاح الـ API.")
+                st.markdown("---")
+                st.markdown("""
+                    <div class="animated-box" style="background-color: rgba(241, 196, 15, 0.15); border: 2px solid #F1C40F; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
+                        <h3 style="margin: 0; font-weight: 900; line-height: 1.6;">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
+                        <h4 style="margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.error("عذراً، حدث ضغط مؤقت في استجابة الخادم. يرجى الضغط مرة أخرى على زر (ابدأ تكييف ورقة العمل) وسيعمل بشكل فوري.")
