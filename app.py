@@ -115,7 +115,7 @@ except Exception:
     pass
 
 if not api_key:
-    st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) تشغيل النظام.")
+    st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) لتشغيل النظام.")
 else:
     genai.configure(api_key=api_key)
 
@@ -288,7 +288,7 @@ else:
             st.warning("الرجاء رفع ملف ورقة العمل أولاً / Please upload a file first.")
         else:
             mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
-            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل باستخدام أحدث تقنيات الذكاء الاصطناعي... / Processing..."):
+            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل باستخدام نموذج Gemini 3.8 Flash... / Processing..."):
                 
                 if generate_alternative:
                     prompt = f"""
@@ -321,19 +321,31 @@ else:
                     """
                 
                 adapted_text = None
-                model_name = "gemini-1.5-flash"
+                # اعتماد نموذج gemini-3.8-flash مع آلية رجوع احتياطية آمنة (fallback) في حال الحاجة
+                models_to_try = ["gemini-3.8-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 
-                try:
-                    model = genai.GenerativeModel(model_name)
-                    generation_config = genai.types.GenerationConfig(
-                        max_output_tokens=8192,
-                        temperature=0.7
-                    )
-                    response = model.generate_content(prompt, generation_config=generation_config)
-                    if response and response.text:
-                        adapted_text = response.text
-                except Exception as e:
-                    st.error(f"حدث خطأ في الاتصال بخدمة الذكاء الاصطناعي: {str(e)}")
+                for model_name in models_to_try:
+                    success_with_model = False
+                    for attempt in range(2):
+                        try:
+                            model = genai.GenerativeModel(model_name)
+                            generation_config = genai.types.GenerationConfig(
+                                max_output_tokens=8192,
+                                temperature=0.7
+                            )
+                            response = model.generate_content(prompt, generation_config=generation_config)
+                            if response and response.text:
+                                adapted_text = response.text
+                                success_with_model = True
+                                break
+                        except Exception as e:
+                            if "429" in str(e) or "404" in str(e):
+                                time.sleep(2)
+                                continue
+                            else:
+                                break
+                    if success_with_model and adapted_text:
+                        break
 
                 if not adapted_text:
                     st.warning("عذراً، لم يتم استجابة الخادم بالكامل. الرجاء المحاولة مرة أخرى بعد ثوانٍ.")
