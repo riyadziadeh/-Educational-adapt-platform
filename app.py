@@ -107,15 +107,15 @@ else:
 
 st.markdown("---")
 
-# جلب مفتاح الـ API حصرياً من الأسرار البرمجية (Secrets) دون إظهاره في الواجهة
+# جلب مفتاح الـ API بمرونة تامة (سواء من الأسرار أو من متغيرات البيئة)
 api_key = None
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except Exception:
-    pass
+    api_key = os.getenv("GOOGLE_API_KEY")
 
 if not api_key:
-    st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) لتشغيل النظام.")
+    st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) أو متغيرات البيئة لتشغيل النظام.")
 else:
     genai.configure(api_key=api_key)
 
@@ -321,7 +321,7 @@ else:
                     """
                 
                 adapted_text = None
-                # النماذج المدعومة والمستقرة في المكتبة لتجنب خطأ 404
+                # النماذج المدعومة والمستقرة في المكتبة لتجنب أي أخطاء
                 models_to_try = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"]
 
                 for model_name in models_to_try:
@@ -329,10 +329,12 @@ else:
                     for attempt in range(2):
                         try:
                             model = genai.GenerativeModel(model_name)
+                            # ضبط الـ Generation Config لضمان السماح بردود طويلة ومفصلة دون تقطيع
                             response = model.generate_content(
                                 prompt, 
                                 generation_config=genai.types.GenerationConfig(
-                                    temperature=0.7
+                                    temperature=0.7,
+                                    max_output_tokens=8192
                                 )
                             )
                             if response and response.text:
