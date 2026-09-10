@@ -2,7 +2,8 @@ import os
 import io
 import time
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import pypdf
 
 # محاولة استيراد مكتبات Word و PowerPoint بأمان تامة لضمان عدم انهيار السيرفر
@@ -124,7 +125,8 @@ except Exception:
 if not api_key:
     st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) أو متغيرات البيئة لتشغيل النظام.")
 else:
-    genai.configure(api_key=api_key)
+    # === الإصلاح الأول: استخدام مكتبة google-genai الجديدة بدل google-generativeai المتوقفة ===
+    client = genai.Client(api_key=api_key)
 
     grades = [
         "الصف الأول / Grade 1", "الصف الثاني / Grade 2", "الصف الثالث / Grade 3", 
@@ -331,22 +333,26 @@ else:
                 """
             
             adapted_text = None
-            models_to_try = ["gemini-1.5-flash", "gemini-pro"]
+            # === الإصلاح الثاني: استبدال النماذج المتقاعدة (gemini-1.5-flash / gemini-pro)
+            # بنماذج فعالة حالياً على واجهة Gemini API ===
+            models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash-001"]
 
+            last_error = None
             for model_name in models_to_try:
                 try:
-                    model = genai.GenerativeModel(model_name)
-                    response = model.generate_content(
-                        prompt, 
-                        generation_config=genai.types.GenerationConfig(
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
                             temperature=0.7,
-                            max_output_tokens=4000
-                        )
+                            max_output_tokens=4000,
+                        ),
                     )
                     if response and response.text:
                         adapted_text = response.text
                         break
                 except Exception as e:
+                    last_error = e
                     time.sleep(1)
                     continue
 
@@ -401,4 +407,6 @@ else:
                     </div>
                 """, unsafe_allow_html=True)
             else:
-                st.error("عذراً، حدث ضغط مؤقت في استجابة الخادم. يرجى الضغط مرة أخرى على زر (ابدأ تكييف ورقة العمل) وسيعمل بشكل فوري.")
+                st.error("عذراً، تعذّر الاتصال بخدمة الذكاء الاصطناعي حالياً. يرجى المحاولة لاحقاً، أو التأكد من صلاحية مفتاح GOOGLE_API_KEY.")
+                if last_error:
+                    st.caption(f"تفاصيل تقنية: {last_error}")
