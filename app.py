@@ -14,7 +14,7 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
-# تخصيص CSS لتلوين الخانات بالأصفر الهادئ، جعل الخطوط عريضة (Bold)، وإضافة تأثير الـ Animation
+# تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً
 st.markdown("""
     <style>
     /* تأثير الحركة الانسيابية (Animation) لصندوق الشكر */
@@ -30,21 +30,30 @@ st.markdown("""
     .stSelectbox label p, .stFileUploader label p, div[data-baseweb="select"] label, label, .stCheckbox label p {
         font-weight: 900 !important;
         font-size: 17px !important;
-        color: #1A252F !important;
     }
     
-    /* خلفية خانات القوائم المنسدلة بلون أصفر بارد وهادئ */
-    div[data-baseweb="select"] > div {
-        background-color: #FFFDEB !important;
-        border-radius: 10px !important;
-        border: 2px solid #F1C40F !important;
+    /* دعم الوضع الفاتح (Light Mode) */
+    @media (prefers-color-scheme: light) {
+        div[data-baseweb="select"] > div, div.stFileUploader > div {
+            background-color: #FFFDEB !important;
+            border-radius: 10px !important;
+            border: 2px solid #F1C40F !important;
+        }
+        div[data-baseweb="select"] > div * {
+            color: #1A252F !important;
+        }
     }
 
-    /* خلفية خانة رفع الملفات بلون أصفر بارد وهادئ */
-    div.stFileUploader > div {
-        background-color: #FFFDEB !important;
-        border-radius: 10px !important;
-        border: 2px solid #F1C40F !important;
+    /* دعم الوضع الداكن (Dark Mode) لضمان عدم اختلاف الألوان وعدم وضوح الكلام */
+    @media (prefers-color-scheme: dark) {
+        div[data-baseweb="select"] > div, div.stFileUploader > div {
+            background-color: #262730 !important;
+            border-radius: 10px !important;
+            border: 2px solid #F1C40F !important;
+        }
+        div[data-baseweb="select"] > div * {
+            color: #FFFFFF !important;
+        }
     }
     </style>
 """, unsafe_allow_html=True)
@@ -68,8 +77,8 @@ with col_logo2:
 # العنوان الرئيسي للنظام تحت الشعار مباشرة
 st.markdown("""
     <div style="text-align: center;">
-        <h1 style="font-size: 28px; margin-bottom: 0; font-weight: 900; color: #2C3E50;">نظام تكييف أوراق العمل التربوية</h1>
-        <h2 style="font-size: 22px; margin-top: 5px; color: #34495E; font-weight: 900;">Educational Worksheet Adaptation System</h2>
+        <h1 style="font-size: 28px; margin-bottom: 0; font-weight: 900;">نظام تكييف أوراق العمل التربوية</h1>
+        <h2 style="font-size: 22px; margin-top: 5px; font-weight: 900;">Educational Worksheet Adaptation System</h2>
     </div>
 """, unsafe_allow_html=True)
 
@@ -120,7 +129,6 @@ else:
         "معان / Ma'an", "الطفيلة / Tafilah", "العقبة / Aqaba"
     ]
 
-    # قائمة المواد الدراسية الأساسية للنظامين الوطني والدولي
     subjects = [
         "الرياضيات / Mathematics / Mathématiques",
         "العلوم / Science / Sciences",
@@ -136,7 +144,6 @@ else:
         "الفنون والتربية المهنية / Arts & Vocational Education"
     ]
 
-    # خانة اختيار اللغات الأساسية
     languages = [
         "ثنائي اللغة (عربي / إنجليزي) - Bilingual (Arabic / English)",
         "ثنائي اللغة (عربي / فرنسي) - Bilingual (Arabic / French)",
@@ -173,7 +180,6 @@ else:
         ]
     }
 
-    # واجهة الإدخال المحدثة
     selected_grade = st.selectbox("اختر الصف الدراسي / Select Grade:", grades)
     selected_system = st.selectbox("اختر النظام التعليمي / Select Educational System:", educational_systems)
     selected_subject = st.selectbox("اختر المادة الدراسية / Select Subject / Matière:", subjects)
@@ -187,7 +193,7 @@ else:
         "تكييف متوازن وشامل (Balanced Adaptation)",
         "تبسيط وتسهيل شديد للمفاهيم (Deep Simplification)",
         "إثراء معرفي متقدم للموهوبين (Advanced Enrichment)",
-        "دمج بصري وحسي مكثف (Sensory & Visual Integration)"
+        "دمج بصري والحسي مكثف (Sensory & Visual Integration)"
     ]
     selected_level = st.selectbox("اختر مستوى وطبيعة التكييف / Select Adaptation Level:", adaptation_levels)
 
@@ -279,7 +285,7 @@ else:
                 if generate_alternative:
                     prompt = f"""
                     أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
-                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject})، يرجى تصميم وابتكار **ورقة عمل بديلة مقترحة بالكامل** بالإضافة إلى **بنك أسئلة تقييمي تشخيصي** يناسب الحالة الخاصة المحددة ومستوى التكييف المطلوب ({selected_level}), مع الالتزام بلغة المخرجات المطلوبة ({selected_language}):
+                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject}), يرجى تصميم وابتكار **ورقة عمل بديلة مقترحة بالكامل** بالإضافة إلى **بنك أسئلة تقييمي تشخيصي** يناسب الحالة الخاصة المحددة ومستوى التكييف المطلوب ({selected_level}), مع الالتزام بلغة المخرجات المطلوبة ({selected_language}):
                     - الصف الدراسي / Grade: {selected_grade}
                     - النظام التعليمي / System: {selected_system}
                     - المادة الدراسية / Subject: {selected_subject}
@@ -393,11 +399,10 @@ else:
                             mime="application/pdf"
                         )
 
-                    # رسالة الشكر المنسقة نحوياً بدون كلمة مهم وبحركة انسيابية
                     st.markdown("---")
                     st.markdown("""
-                        <div class="animated-box" style="background-color: #FFFDEB; border: 2px solid #F1C40F; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
-                            <h3 style="color: #2C3E50; margin: 0; font-weight: 900; line-height: 1.6;">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
-                            <h4 style="color: #34495E; margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
+                        <div class="animated-box" style="background-color: rgba(241, 196, 15, 0.15); border: 2px solid #F1C40F; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
+                            <h3 style="margin: 0; font-weight: 900; line-height: 1.6;">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
+                            <h4 style="margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
                         </div>
                     """, unsafe_allow_html=True)
