@@ -288,7 +288,7 @@ else:
             st.warning("الرجاء رفع ملف ورقة العمل أولاً / Please upload a file first.")
         else:
             mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
-            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل باستخدام نموذج Gemini 3.8 Flash... / Processing..."):
+            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل باستخدام نموذج Gemini 1.5 Flash... / Processing..."):
                 
                 if generate_alternative:
                     prompt = f"""
@@ -321,8 +321,7 @@ else:
                     """
                 
                 adapted_text = None
-                # اعتماد نموذج gemini-3.8-flash مع آلية رجوع احتياطية آمنة (fallback) في حال الحاجة
-                models_to_try = ["gemini-3.8-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+                models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
 
                 for model_name in models_to_try:
                     success_with_model = False
@@ -339,10 +338,11 @@ else:
                                 success_with_model = True
                                 break
                         except Exception as e:
-                            if "429" in str(e) or "404" in str(e):
-                                time.sleep(2)
+                            if "429" in str(e):
+                                time.sleep(3)
                                 continue
                             else:
+                                st.error(f"خطأ في النموذج {model_name}: {str(e)}")
                                 break
                     if success_with_model and adapted_text:
                         break
