@@ -115,7 +115,7 @@ except Exception:
     pass
 
 if not api_key:
-    st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) لتشغيل النظام.")
+    st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) تشغيل النظام.")
 else:
     genai.configure(api_key=api_key)
 
@@ -321,54 +321,22 @@ else:
                     """
                 
                 adapted_text = None
-                models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-3.8-flash"]
+                model_name = "gemini-1.5-flash"
 
-                for model_name in models_to_try:
-                    success_with_model = False
-                    for attempt in range(2):
-                        try:
-                            model = genai.GenerativeModel(model_name)
-                            generation_config = genai.types.GenerationConfig(
-                                max_output_tokens=8192,
-                                temperature=0.7
-                            )
-                            response = model.generate_content(prompt, generation_config=generation_config)
-                            if response and response.text:
-                                adapted_text = response.text
-                                success_with_model = True
-                                break
-                        except Exception as e:
-                            if "429" in str(e):
-                                time.sleep(3)
-                                continue
-                            else:
-                                break
-                    if success_with_model and adapted_text:
-                        break
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    generation_config = genai.types.GenerationConfig(
+                        max_output_tokens=8192,
+                        temperature=0.7
+                    )
+                    response = model.generate_content(prompt, generation_config=generation_config)
+                    if response and response.text:
+                        adapted_text = response.text
+                except Exception as e:
+                    st.error(f"حدث خطأ في الاتصال بخدمة الذكاء الاصطناعي: {str(e)}")
 
                 if not adapted_text:
-                    adapted_text = f"""
-### ورقة العمل المطورة والمكيفة (نسخة احتياجية / Mock Adapted Worksheet)
-- **الصف الدراسي / Grade:** {selected_grade}
-- **المادة الدراسية / Subject:** {selected_subject}
-- **لغة المخرجات / Language:** {selected_language}
-- **النظام التعليمي / System:** {selected_system}
-- **المحافظة / Governorate:** {selected_gov} - الأردن
-- **التصنيف التربوي / Condition:** {selected_category} -> {selected_condition}
-- **مستوى التكييف / Level:** {selected_level}
-
----
-
-#### 1. الأهداف التربوية المعدلة / Adapted Learning Objectives:
-* تسهيل استيعاب المفاهيم الأساسية، وتبسيط الأسئلة بصرياً وحسياً بما يتناسب مع حالة الدمج المحددة ومادة {selected_subject}.
-
-#### 2. محتوى ورقة العمل المكيفة / Adapted Worksheet Content:
-* **السؤال الأول / Question 1:** تمرين تفصيلي مبسط ومخصص لمادة {selected_subject} يعتمد على المدلولات البصرية المباشرة.
-* **السؤال الثاني / Question 2:** اختيار من متعدد مصمم لتجنب التشتت وتسهيل الفهم.
-
-#### 3. التعزيز الإيجابي / Positive Reinforcement:
-* "أحسنت يا بطل! عمل رائع ومميز في {selected_subject}."
-                    """
+                    st.warning("عذراً، لم يتم استجابة الخادم بالكامل. الرجاء المحاولة مرة أخرى بعد ثوانٍ.")
 
                 if adapted_text:
                     st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
