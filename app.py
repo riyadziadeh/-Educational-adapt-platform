@@ -3,13 +3,20 @@ import io
 import time
 import streamlit as st
 import google.generativeai as genai
-from docx import Document
-from pptx import Presentation
-from pptx.util import Inches, Pt
-from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
-from fpdf import FPDF
 import pypdf
+
+# محاولة استيراد مكتبات Word و PowerPoint بأمان تامة لضمان عدم انهيار السيرفر
+try:
+    from docx import Document
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+try:
+    from pptx import Presentation
+    PPTX_AVAILABLE = True
+except ImportError:
+    PPTX_AVAILABLE = False
 
 # إعداد صفحة ستريمليت مع تعيين الأيقونة الخاصة بك في المتصفح
 st.set_page_config(
@@ -218,7 +225,7 @@ else:
         try:
             if file_extension == "txt":
                 extracted_content = uploaded_file.getvalue().decode("utf-8")
-            elif file_extension == "docx":
+            elif file_extension == "docx" and DOCX_AVAILABLE:
                 doc = Document(uploaded_file)
                 extracted_content = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
             elif file_extension == "pdf":
@@ -237,64 +244,54 @@ else:
             st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
 
     def create_word_file(text):
-        doc = Document()
-        doc.add_heading('ورقة العمل المطورة (التربية الخاصة) / Adapted Worksheet', 0)
-        for line in text.split('\n'):
-            doc.add_paragraph(line)
-        bio = io.BytesIO()
-        doc.save(bio)
-        bio.seek(0)
-        return bio
+        if DOCX_AVAILABLE:
+            doc = Document()
+            doc.add_heading('ورقة العمل المطورة (التربية الخاصة) / Adapted Worksheet', 0)
+            for line in text.split('\n'):
+                doc.add_paragraph(line)
+            bio = io.BytesIO()
+            doc.save(bio)
+            bio.seek(0)
+            return bio
+        return None
 
     def create_ppt_file(text):
-        prs = Presentation()
-        slide_layout = prs.slide_layouts[0]
-        slide = prs.slides.add_slide(slide_layout)
-        title = slide.shapes.title
-        subtitle = slide.placeholders[1]
-        title.text = "Educational Worksheet Adaptation"
-        subtitle.text = f"النظام التربوي المطور - كلية تراسانطة / {selected_grade}"
+        if PPTX_AVAILABLE:
+            prs = Presentation()
+            slide_layout = prs.slide_layouts[0]
+            slide = prs.slides.add_slide(slide_layout)
+            title = slide.shapes.title
+            subtitle = slide.placeholders[1]
+            title.text = "Educational Worksheet Adaptation"
+            subtitle.text = f"النظام التربوي المطور - كلية تراسانطة / {selected_grade}"
 
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
-        chunk_size = 5  
-        for i in range(0, len(lines), chunk_size):
-            chunk = lines[i:i+chunk_size]
-            bullet_slide_layout = prs.slide_layouts[1]
-            slide = prs.slides.add_slide(bullet_slide_layout)
-            slide.shapes.title.text = f"محطة العرض التفاعلي / Interactive Station {(i//chunk_size)+1}"
-            
-            tf = slide.placeholders[1].text_frame
-            tf.text = "• " + chunk[0]
-            for line in chunk[1:]:
-                p = tf.add_paragraph()
-                p.text = "• " + line
-                p.level = 0
+            lines = [line.strip() for line in text.split('\n') if line.strip()]
+            chunk_size = 5  
+            for i in range(0, len(lines), chunk_size):
+                chunk = lines[i:i+chunk_size]
+                bullet_slide_layout = prs.slide_layouts[1]
+                slide = prs.slides.add_slide(bullet_slide_layout)
+                slide.shapes.title.text = f"محطة العرض التفاعلي / Interactive Station {(i//chunk_size)+1}"
+                
+                tf = slide.placeholders[1].text_frame
+                tf.text = "• " + chunk[0]
+                for line in chunk[1:]:
+                    p = tf.add_paragraph()
+                    p.text = "• " + line
+                    p.level = 0
 
-        bio = io.BytesIO()
-        prs.save(bio)
-        bio.seek(0)
-        return bio
+            bio = io.BytesIO()
+            prs.save(bio)
+            bio.seek(0)
+            return bio
+        return None
 
-    def create_pdf_file(text):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=11)
-        pdf.set_auto_page_break(auto=True, margin=15)
-        clean_text = text.encode('latin-1', 'ignore').decode('latin-1')
-        for line in clean_text.split('\n'):
-            if line.strip():
-                pdf.multi_cell(0, 8, line)
-            else:
-                pdf.ln(4)
-        pdf_output = pdf.output(dest='S')
-        if isinstance(pdf_output, str):
-            pdf_output = pdf_output.encode('latin-1')
-        bio = io.BytesIO(pdf_output)
+    def create_txt_file(text):
+        bio = io.BytesIO(text.encode('utf-8'))
         bio.seek(0)
         return bio
 
     if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀 / Start AI Adaptation"):
-        # حتى لو كان الملف فارغاً أو تعذر استخراج النص، سنسمح للنظام بالعمل بناءً على معايير المادة والصف والحالة الخاصة لضمان عدم توقف المستخدم أبداً
         if not extracted_content.strip():
             extracted_content = f"ورقة عمل عامة لمبحث {selected_subject} للصف {selected_grade} وفق النظام {selected_system}."
 
@@ -302,7 +299,6 @@ else:
         
         with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) وتحليلها عبر الذكاء الاصطناعي... يرجى الانتظار قليلاً..."):
             
-            # تقليص النص الذكي لضمان عدم حدوث Timeout نهائياً
             trimmed_content = extracted_content[:3500] if len(extracted_content) > 3500 else extracted_content
 
             if generate_alternative:
@@ -335,8 +331,6 @@ else:
                 """
             
             adapted_text = None
-            
-            # استخدام النماذج الأكثر استقراراً وسرعة مع معالجة ذكية للأخطاء
             models_to_try = ["gemini-1.5-flash", "gemini-pro"]
 
             for model_name in models_to_try:
@@ -368,29 +362,35 @@ else:
                 
                 with col1:
                     word_data = create_word_file(adapted_text)
-                    st.download_button(
-                        label="تحميل Word (.docx)",
-                        data=word_data,
-                        file_name="Adapted_Worksheet.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    )
+                    if word_data and DOCX_AVAILABLE:
+                        st.download_button(
+                            label="تحميل Word (.docx)",
+                            data=word_data,
+                            file_name="Adapted_Worksheet.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                    else:
+                        st.info("تصدير Word غير متوفر حالياً.")
                     
                 with col2:
                     ppt_data = create_ppt_file(adapted_text)
-                    st.download_button(
-                        label="تحميل PowerPoint (Prezi-Style) (.pptx)",
-                        data=ppt_data,
-                        file_name="Interactive_Presentation.pptx",
-                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    )
+                    if ppt_data and PPTX_AVAILABLE:
+                        st.download_button(
+                            label="تحميل PowerPoint (.pptx)",
+                            data=ppt_data,
+                            file_name="Interactive_Presentation.pptx",
+                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        )
+                    else:
+                        st.info("تصدير PowerPoint غير متوفر حالياً.")
                     
                 with col3:
-                    pdf_data = create_pdf_file(adapted_text)
+                    txt_data = create_txt_file(adapted_text)
                     st.download_button(
-                        label="تحميل PDF (.pdf)",
-                        data=pdf_data,
-                        file_name="Adapted_Worksheet.pdf",
-                        mime="application/pdf"
+                        label="تحميل نصي (.txt)",
+                        data=txt_data,
+                        file_name="Adapted_Worksheet.txt",
+                        mime="text/plain"
                     )
 
                 st.markdown("---")
