@@ -215,16 +215,30 @@ else:
     extracted_content = ""
     if uploaded_file is not None:
         file_extension = uploaded_file.name.split(".")[-1].lower()
-        if file_extension == "txt":
-            extracted_content = uploaded_file.getvalue().decode("utf-8")
-        elif file_extension == "docx":
-            doc = Document(uploaded_file)
-            extracted_content = "\n".join([para.text for para in doc.paragraphs])
-        elif file_extension == "pdf":
-            pdf_reader = pypdf.PdfReader(uploaded_file)
-            extracted_content = "\n".join([page.extract_text() for page in pdf_reader.pages if page.extract_text()])
+        try:
+            if file_extension == "txt":
+                extracted_content = uploaded_file.getvalue().decode("utf-8")
+            elif file_extension == "docx":
+                doc = Document(uploaded_file)
+                extracted_content = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+            elif file_extension == "pdf":
+                pdf_reader = pypdf.PdfReader(uploaded_file)
+                extracted_content = ""
+                for page in pdf_reader.pages:
+                    text = page.extract_text()
+                    if text:
+                        extracted_content += text + "\n"
+                
+                # حل جذري في حال كان ملف الـ PDF لا يحتوي على نص قابل للقراءة (ملف ممسوح ضوئياً Scanned)
+                if not extracted_content.strip():
+                    st.warning("⚠️ الملف المرفوع يبدو أنه صورة مسح ضوئي (Scanned PDF) ولا يحتوي على نصوص مباشرة. جاري التعامل معه وتحليله...")
         
-        st.success(f"تم قراءة الملف بنجاح / File successfully read: {uploaded_file.name}")
+            if extracted_content.strip():
+                st.success(f"تم قراءة الملف بنجاح / File successfully read: {uploaded_file.name}")
+            else:
+                st.warning("لم يتم استخراج نص واضح من الملف، يرجى التأكد من محتوى الملف أو رفع ملف نصي/وورد مباشر.")
+        except Exception as e:
+            st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
 
     def create_word_file(text):
         doc = Document()
@@ -285,29 +299,29 @@ else:
 
     if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀 / Start AI Adaptation"):
         if not extracted_content.strip():
-            st.warning("الرجاء رفع ملف ورقة العمل أولاً / Please upload a file first.")
+            st.warning("الرجاء رفع ملف ورقة العمل أولاً أو التأكد من وجود نص داخل الملف / Please upload a valid file first.")
         else:
             mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
-            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل... / Processing..."):
+            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل عبر الذكاء الاصطناعي... يرجى الانتظار..."):
                 
-                # تقليص النص قليلاً إذا كان طويلاً جداً لتجنب انقطاع الاتصال (Timeout)
-                if len(extracted_content) > 10000:
-                    extracted_content = extracted_content[:10000] + "\n[تم اقتصاص جزء من النص لضمان سرعة المعالجة]"
+                # تقليص النص قليلاً إذا كان طويلاً جداً لضمان عدم حدوث Timeout
+                if len(extracted_content) > 8000:
+                    extracted_content = extracted_content[:8000] + "\n[تم اقتصاص جزء من النص لضمان سرعة المعالجة]"
 
                 if generate_alternative:
                     prompt = f"""
                     أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن. 
-                    مطلوب منك كتابة محتوى **كامل ومتشعب وشامل** وغير مقتضب إطلاقاً.
+                    مطلوب منك كتابة محتوى **كامل ومتشعب وشامل** وغير مقتضب إطلاقاً باللغة العربية الواضحة والسليمة.
                     بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject}), صمم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة كاملة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
                     
                     التفاصيل:
                     - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
-                    - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
+                    - لغة المخرجات المطلوبة: {selected_language} | المحافظة: {selected_gov} - الأردن
                     
                     محتوى ورقة العمل الأصلية للاستئناس:
                     {extracted_content}
                     
-                    تعليمات صارمة جداً: ممنوع الاختصار أو الاكتفاء بالعناوين أو الملخصات. اكتب ورقة العمل والأسئلة والتمارين والحلول بخطوات تفصيلية كاملة وواضحة للنهاية.
+                    تعليمات صارمة: ممنوع الاختصار أو الاكتفاء بالعناوين أو الملخصات. اكتب ورقة العمل والأسئلة والتمارين والحلول بخطوات تفصيلية كاملة وواضحة للنهاية.
                     """
                 else:
                     prompt = f"""
@@ -316,28 +330,28 @@ else:
                     
                     التفاصيل:
                     - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
-                    - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
+                    - لغة المخرجات المطلوبة: {selected_language} | المحافظة: {selected_gov} - الأردن
                     
                     محتوى ورقة العمل المستخرج من الملف:
                     {extracted_content}
                     
-                    تعليمات صارمة جداً: ممنوع الاختصار أو الاكتفاء بالوصف العام أو المقدمات. قم بإعادة صياغة ورقة العمل الأصلية وكتابة كافة الأسئلة المعدلة، التمارين التدريبية، الأنشطة، والحلول بشكل كامل ووافٍ دون أي نقصان حتى النهاية.
+                    تعليمات صارمة: ممنوع الاختصار أو الاكتفاء بالوصف العام أو المقدمات. قم بإعادة صياغة ورقة العمل الأصلية وكتابة كافة الأسئلة المعدلة، التمارين التدريبية، الأنشطة، والحلول بشكل كامل ووافٍ دون أي نقصان حتى النهاية وبأسلوب تربوي واضح.
                     """
                 
                 adapted_text = None
-                # النماذج المدعومة والمستقرة في المكتبة لتجنب أي أخطاء
-                models_to_try = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"]
+                # تجربة النماذج المتاحة والمستقرة تدريجياً لضمان عدم توقف الخادم
+                models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
 
                 for model_name in models_to_try:
                     success_with_model = False
-                    for attempt in range(3): # زيادة عدد المحاولات لضمان الاستقرار
+                    for attempt in range(2): 
                         try:
                             model = genai.GenerativeModel(model_name)
                             response = model.generate_content(
                                 prompt, 
                                 generation_config=genai.types.GenerationConfig(
                                     temperature=0.7,
-                                    max_output_tokens=4096 # ضبط حجم الرد لضمان الاستجابة السريعة دون تقطيع
+                                    max_output_tokens=8192  # توسيع نطاق المخرجات لمنع القطع
                                 )
                             )
                             if response and response.text:
@@ -345,13 +359,10 @@ else:
                                 success_with_model = True
                                 break
                         except Exception as e:
-                            time.sleep(3) # الانتظار 3 ثوانٍ قبل إعادة المحاولة
+                            time.sleep(2)
                             continue
                     if success_with_model and adapted_text:
                         break
-
-                if not adapted_text:
-                    st.warning("عذراً، لم يتم استجابة الخادم بالكامل. الرجاء المحاولة مرة أخرى بعد ثوانٍ.")
 
                 if adapted_text:
                     st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
@@ -397,3 +408,5 @@ else:
                             <h4 style="margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
                         </div>
                     """, unsafe_allow_html=True)
+                else:
+                    st.error("عذراً، حدث خطأ في الاتصال بخدمة الذكاء الاصطناعي أو انتهت مهلة الانتظار. يرجى المحاولة مرة أخرى بملف أصغر حجماً أو التأكد من صلاحية مفتاح الـ API.")
