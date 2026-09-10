@@ -290,6 +290,10 @@ else:
             mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
             with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل... / Processing..."):
                 
+                # تقليص النص قليلاً إذا كان طويلاً جداً لتجنب انقطاع الاتصال (Timeout)
+                if len(extracted_content) > 10000:
+                    extracted_content = extracted_content[:10000] + "\n[تم اقتصاص جزء من النص لضمان سرعة المعالجة]"
+
                 if generate_alternative:
                     prompt = f"""
                     أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن. 
@@ -326,15 +330,14 @@ else:
 
                 for model_name in models_to_try:
                     success_with_model = False
-                    for attempt in range(2):
+                    for attempt in range(3): # زيادة عدد المحاولات لضمان الاستقرار
                         try:
                             model = genai.GenerativeModel(model_name)
-                            # ضبط الـ Generation Config لضمان السماح بردود طويلة ومفصلة دون تقطيع
                             response = model.generate_content(
                                 prompt, 
                                 generation_config=genai.types.GenerationConfig(
                                     temperature=0.7,
-                                    max_output_tokens=8192
+                                    max_output_tokens=4096 # ضبط حجم الرد لضمان الاستجابة السريعة دون تقطيع
                                 )
                             )
                             if response and response.text:
@@ -342,7 +345,7 @@ else:
                                 success_with_model = True
                                 break
                         except Exception as e:
-                            time.sleep(2)
+                            time.sleep(3) # الانتظار 3 ثوانٍ قبل إعادة المحاولة
                             continue
                     if success_with_model and adapted_text:
                         break
