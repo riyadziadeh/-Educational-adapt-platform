@@ -14,9 +14,14 @@ import pypdf
 # إعداد صفحة ستريمليت
 st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
 
-# تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً
+# تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً + إخفاء أيقونة GitHub فقط
 st.markdown("""
     <style>
+    /* إخفاء أيقونة GitHub وحدها من الشريط العلوي */
+    .stAppToolbar [data-testid="stToolbarActions"] {
+        display: none !important;
+    }
+
     /* تأثير الحركة الانسيابية (Animation) لصندوق الشكر */
     @keyframes fadeInScale {
         0% { opacity: 0; transform: scale(0.95); }
