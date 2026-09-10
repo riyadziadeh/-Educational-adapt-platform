@@ -11,8 +11,12 @@ from pptx.enum.text import PP_ALIGN
 from fpdf import FPDF
 import pypdf
 
-# إعداد صفحة ستريمليت
-st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
+# إعداد صفحة ستريمليت مع تعيين الأيقونة الخاصة بك في المتصفح
+st.set_page_config(
+    page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", 
+    page_icon="Educ_Worksheet_Adapt_Icon_(Square).png", 
+    layout="centered"
+)
 
 # تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً + إخفاء أيقونة GitHub فقط
 st.markdown("""
