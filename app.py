@@ -181,7 +181,7 @@ else:
         "4. الإعاقات والحالات الصحية المزمنة / Chronic Health Conditions": [
             "الأمراض المزمنة المحتاجة لمتابعة (سكري، ربو شديد، صرع) / Chronic Illnesses (Diabetes, Asthma, Epilepsy)",
             "مرضى السرطان (برامج استكمال وعلاجات مستمرة) / Cancer Support Programs",
-            "ح حالات الفشل الكلوي (غسيل دوري) / Kidney Failure & Dialysis Care"
+            "حالات الفشل الكلوي (غسيل دوري) / Kidney Failure & Dialysis Care"
         ],
         "5. فئة الموهبة والتفوق / Giftedness & Talent": [
             "الطلبة الموهوبون والمتفوقون (برامج إثراء معرفي وتسريع أكاديمي) / Gifted & Talented Students (Enrichment & Acceleration)"
@@ -288,13 +288,13 @@ else:
             st.warning("الرجاء رفع ملف ورقة العمل أولاً / Please upload a file first.")
         else:
             mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
-            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل باستخدام نموذج الذكاء الاصطناعي... / Processing..."):
+            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل... / Processing..."):
                 
                 if generate_alternative:
                     prompt = f"""
                     أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن. 
                     مطلوب منك كتابة محتوى **كامل ومتشعب وشامل** وغير مقتضب إطلاقاً.
-                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject})، صمم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة كاملة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
+                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject}), صمم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة كاملة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
                     
                     التفاصيل:
                     - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
@@ -321,26 +321,29 @@ else:
                     """
                 
                 adapted_text = None
-                
-                # استخدام الطريقة القياسية لجلب النموذج الافتراضي المتاحة في المكتبة بدون أخطاء تسمية
-                try:
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    generation_config = genai.types.GenerationConfig(
-                        max_output_tokens=8192,
-                        temperature=0.7
-                    )
-                    response = model.generate_content(prompt, generation_config=generation_config)
-                    if response and response.text:
-                        adapted_text = response.text
-                except Exception as e1:
-                    try:
-                        # محاولة ثانية عبر النموذج الافتراضي العام
-                        model = genai.GenerativeModel('gemini-pro')
-                        response = model.generate_content(prompt)
-                        if response and response.text:
-                            adapted_text = response.text
-                    except Exception as e2:
-                        st.error(f"حدث خطأ في الاتصال بالخادم: {str(e1)}")
+                # النماذج المدعومة والمستقرة في المكتبة لتجنب خطأ 404
+                models_to_try = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"]
+
+                for model_name in models_to_try:
+                    success_with_model = False
+                    for attempt in range(2):
+                        try:
+                            model = genai.GenerativeModel(model_name)
+                            response = model.generate_content(
+                                prompt, 
+                                generation_config=genai.types.GenerationConfig(
+                                    temperature=0.7
+                                )
+                            )
+                            if response and response.text:
+                                adapted_text = response.text
+                                success_with_model = True
+                                break
+                        except Exception as e:
+                            time.sleep(2)
+                            continue
+                    if success_with_model and adapted_text:
+                        break
 
                 if not adapted_text:
                     st.warning("عذراً، لم يتم استجابة الخادم بالكامل. الرجاء المحاولة مرة أخرى بعد ثوانٍ.")
