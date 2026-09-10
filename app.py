@@ -11,12 +11,21 @@ from pptx.enum.text import PP_ALIGN
 from fpdf import FPDF
 import pypdf
 
-# إعداد صفحة ستريمليت
-st.set_page_config(page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", layout="centered")
+# إعداد صفحة ستريمليت مع تعيين الأيقونة الخاصة بك في المتصفح
+st.set_page_config(
+    page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", 
+    page_icon="Educ_Worksheet_Adapt_Icon_(Square).png", 
+    layout="centered"
+)
 
-# تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً
+# تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً + إخفاء أيقونة GitHub فقط
 st.markdown("""
     <style>
+    /* إخفاء أيقونة GitHub وحدها من الشريط العلوي */
+    .stAppToolbar [data-testid="stToolbarActions"] {
+        display: none !important;
+    }
+
     /* تأثير الحركة الانسيابية (Animation) لصندوق الشكر */
     @keyframes fadeInScale {
         0% { opacity: 0; transform: scale(0.95); }
@@ -109,7 +118,6 @@ if not api_key:
     st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) لتشغيل النظام.")
 else:
     genai.configure(api_key=api_key)
-    MODEL_NAME = "gemini-3.8-flash"
 
     grades = [
         "الصف الأول / Grade 1", "الصف الثاني / Grade 2", "الصف الثالث / Grade 3", 
@@ -280,55 +288,56 @@ else:
             st.warning("الرجاء رفع ملف ورقة العمل أولاً / Please upload a file first.")
         else:
             mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
-            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) باستخدام أحدث تقنيات الذكاء الاصطناعي... / Processing..."):
+            with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) بالتفصيل الكامل باستخدام أحدث تقنيات الذكاء الاصطناعي... / Processing..."):
                 
                 if generate_alternative:
                     prompt = f"""
-                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
-                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject}), يرجى تصميم وابتكار **ورقة عمل بديلة مقترحة بالكامل** بالإضافة إلى **بنك أسئلة تقييمي تشخيصي** يناسب الحالة الخاصة المحددة ومستوى التكييف المطلوب ({selected_level}), مع الالتزام بلغة المخرجات المطلوبة ({selected_language}):
-                    - الصف الدراسي / Grade: {selected_grade}
-                    - النظام التعليمي / System: {selected_system}
-                    - المادة الدراسية / Subject: {selected_subject}
-                    - لغة المخرجات / Output Language: {selected_language}
-                    - موقع المدرسة (المحافظة) / Governorate: {selected_gov} - الأردن
-                    - التصنيف والحالة الخاصة / Condition: {selected_category} -> {selected_condition}
-                    - مستوى التكييف / Level: {selected_level}
+                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن. 
+                    مطلوب منك كتابة محتوى **كامل ومتشعب وشامل** وغير مقتضب إطلاقاً.
+                    بناءً على محتوى ورقة العمل المستخرجة أدناه لمادة ({selected_subject})، صمم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة كاملة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
                     
-                    محتوى ورقة العمل الأصلية:
+                    التفاصيل:
+                    - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
+                    - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
+                    
+                    محتوى ورقة العمل الأصلية للاستئناس:
                     {extracted_content}
                     
-                    يرجى تنظيم المخرجات بطريقة تربوية احترافية تراعي الفروق الفردية وإرشادات الدمج الشامل.
+                    تعليمات صارمة جداً: ممنوع الاختصار أو الاكتفاء بالعناوين أو الملخصات. اكتب ورقة العمل والأسئلة والتمارين والحلول بخطوات تفصيلية كاملة وواضحة للنهاية.
                     """
                 else:
                     prompt = f"""
-                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن (كلية دي لاسال / تراسنطة). 
-                    يرجى تكييف وتطوير ورقة العمل التالية لمادة ({selected_subject}) بدقة فائقة وبناءً على مستوى التكييف المطلوب ({selected_level}) مع الالتزام بلغة المخرجات المطلوبة ({selected_language}):
-                    - الصف الدراسي / Grade: {selected_grade}
-                    - النظام التعليمي / System: {selected_system}
-                    - المادة الدراسية / Subject: {selected_subject}
-                    - لغة المخرجات / Output Language: {selected_language}
-                    - موقع المدرسة (المحافظة) / Governorate: {selected_gov} - الأردن
-                    - التصنيف والحالة الخاصة / Condition: {selected_category} -> {selected_condition}
-                    - مستوى التكييف / Level: {selected_level}
+                    أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن. 
+                    مطلوب منك تنفيذ **تكييف وتطوير شامل وكامل ودقيق** لورقة العمل التالية لمادة ({selected_subject}) بناءً على مستوى التكييف ({selected_level}) والحالة الخاصة ({selected_condition}).
+                    
+                    التفاصيل:
+                    - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
+                    - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
                     
                     محتوى ورقة العمل المستخرج من الملف:
                     {extracted_content}
                     
-                    يرجى إعادة صياغة ورقة العمل الأصلية وتنظيمها بطريقة تربوية احترافية تراعي الفروق الفردية وإرشادات الدمج الشامل.
+                    تعليمات صارمة جداً: ممنوع الاختصار أو الاكتفاء بالوصف العام أو المقدمات. قم بإعادة صياغة ورقة العمل الأصلية وكتابة كافة الأسئلة المعدلة، التمارين التدريبية، الأنشطة، والحلول بشكل كامل ووافٍ دون أي نقصان حتى النهاية.
                     """
                 
                 adapted_text = None
-                models_to_try = ["gemini-3.8-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+                models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-3.8-flash"]
 
                 for model_name in models_to_try:
                     success_with_model = False
                     for attempt in range(2):
                         try:
                             model = genai.GenerativeModel(model_name)
-                            response = model.generate_content(prompt)
-                            adapted_text = response.text
-                            success_with_model = True
-                            break
+                            # ضبط توليدي صارم لضمان عدم قطع النص وزيادة المساحة المخرجة
+                            generation_config = genai.types.GenerationConfig(
+                                max_output_tokens=8192,
+                                temperature=0.7
+                            )
+                            response = model.generate_content(prompt, generation_config=generation_config)
+                            if response and response.text:
+                                adapted_text = response.text
+                                success_with_model = True
+                                break
                         except Exception as e:
                             if "429" in str(e):
                                 time.sleep(3)
@@ -340,7 +349,7 @@ else:
 
                 if not adapted_text:
                     adapted_text = f"""
-### ورقة العمل المطورة والمكيفة (نسخة تجريبية / Mock Adapted Worksheet)
+### ورقة العمل المطورة والمكيفة (نسخة احتياجية / Mock Adapted Worksheet)
 - **الصف الدراسي / Grade:** {selected_grade}
 - **المادة الدراسية / Subject:** {selected_subject}
 - **لغة المخرجات / Language:** {selected_language}
