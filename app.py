@@ -328,7 +328,6 @@ else:
                     for attempt in range(2):
                         try:
                             model = genai.GenerativeModel(model_name)
-                            # ضبط توليدي صارم لضمان عدم قطع النص وزيادة المساحة المخرجة
                             generation_config = genai.types.GenerationConfig(
                                 max_output_tokens=8192,
                                 temperature=0.7
