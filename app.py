@@ -332,7 +332,9 @@ else:
                 """
             
             adapted_text = None
-            models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash-001"]
+            # === قائمة النماذج محدّثة: gemini-3.6-flash هو الأحدث الموصى به من Google،
+            # مع نموذجين احتياطيين في حال ازدحام أو تعطل مؤقت ===
+            models_to_try = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
 
             last_error = None
             for model_name in models_to_try:
