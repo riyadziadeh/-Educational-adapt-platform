@@ -125,7 +125,6 @@ except Exception:
 if not api_key:
     st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) أو متغيرات البيئة لتشغيل النظام.")
 else:
-    # === الإصلاح الأول: استخدام مكتبة google-genai الجديدة بدل google-generativeai المتوقفة ===
     client = genai.Client(api_key=api_key)
 
     grades = [
@@ -333,8 +332,6 @@ else:
                 """
             
             adapted_text = None
-            # === الإصلاح الثاني: استبدال النماذج المتقاعدة (gemini-1.5-flash / gemini-pro)
-            # بنماذج فعالة حالياً على واجهة Gemini API ===
             models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash-001"]
 
             last_error = None
