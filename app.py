@@ -5,6 +5,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 import pypdf
+from PIL import Image
 
 # محاولة استيراد مكتبات Word و PowerPoint بأمان تامة لضمان عدم انهيار السيرفر
 try:
@@ -19,10 +20,10 @@ try:
 except ImportError:
     PPTX_AVAILABLE = False
 
-# إعداد صفحة ستريمليت مع تعيين الأيقونة الخاصة بك في المتصفح
+# إعداد صفحة ستريمليت مع تعيين الأيقونة الجديدة (new_logo.png) في المتصفح
 st.set_page_config(
     page_title="تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", 
-    page_icon="Educ_Worksheet_Adapt_Icon_(Square).png", 
+    page_icon="new_logo.png", 
     layout="centered"
 )
 
@@ -75,21 +76,23 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# عرض الشعار أو الأيقونة الجديدة بجودة عالية وبحجم مناسب في منتصف الصفحة تماماً
+# عرض الشعار الجديد (new_logo.png) بجودة عالية وبحجم مناسب في منتصف الصفحة تماماً
 col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
 with col_logo2:
     logo_loaded = False
     logo_filenames = [
+        "new_logo.png", 
         "Educ_Worksheet_Adapt_Icon_(Square).png", 
         "logo.png", "logo.jpg", "Logo.png", "Logo.JPG"
     ]
     for filename in logo_filenames:
         if os.path.exists(filename):
-            st.image(filename, use_container_width=True)
+            image = Image.open(filename)
+            st.image(image, use_container_width=True)
             logo_loaded = True
             break
     if not logo_loaded:
-        st.warning("الرجاء التأكد من رفع صورة الأيقونة في نفس مجلد المشروع.")
+        st.warning("الرجاء التأكد من رفع صورة الأيقونة باسم new_logo.png في نفس مجلد المشروع.")
 
 # العنوان الرئيسي للنظام تحت الشعار مباشرة
 st.markdown("""
