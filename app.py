@@ -16,6 +16,8 @@ except ImportError:
 
 try:
     from pptx import Presentation
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
     PPTX_AVAILABLE = True
 except ImportError:
     PPTX_AVAILABLE = False
@@ -262,19 +264,35 @@ else:
     def create_ppt_file(text):
         if PPTX_AVAILABLE:
             prs = Presentation()
+            
+            # الشريحة الأولى: غلاف احترافي بتصميم أنيق
             slide_layout = prs.slide_layouts[0]
             slide = prs.slides.add_slide(slide_layout)
+            
+            # تلوين خلفية الغلاف بلون هادئ ومميز
+            background = slide.background
+            fill = background.fill
+            fill.solid()
+            fill.fore_color.rgb = RGBColor(245, 247, 250)
+            
             title = slide.shapes.title
             subtitle = slide.placeholders[1]
             title.text = "Educational Worksheet Adaptation"
-            subtitle.text = f"النظام التربوي المطور - كلية تراسانطة / {selected_grade}"
+            subtitle.text = f"النظام التربوي المطور - كلية تراسانطة\n{selected_grade} | {selected_subject}"
 
+            # تنسيق الشرائح اللاحقة للمحطات التفاعلية
             lines = [line.strip() for line in text.split('\n') if line.strip()]
             chunk_size = 5  
             for i in range(0, len(lines), chunk_size):
                 chunk = lines[i:i+chunk_size]
                 bullet_slide_layout = prs.slide_layouts[1]
                 slide = prs.slides.add_slide(bullet_slide_layout)
+                
+                # تلوين خلفية الشرائح التفاعلية
+                bg_fill = slide.background.fill
+                bg_fill.solid()
+                bg_fill.fore_color.rgb = RGBColor(255, 255, 255)
+                
                 slide.shapes.title.text = f"محطة العرض التفاعلي / Interactive Station {(i//chunk_size)+1}"
                 
                 tf = slide.placeholders[1].text_frame
