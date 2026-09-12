@@ -1,15 +1,11 @@
 {
-  "short_name": "Streamlit",
-  "name": "Streamlit",
-  "icons": [
-    {
-      "src": "https://raw.githubusercontent.com/riyadziadeh/-Educational-adapt-platform/main/play_store_512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
-  ],
-  "start_url": "/",
+  "background_color": "#ffffff",
+  "dir": "ltr",
   "display": "standalone",
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff"
+  "name": "streamlit",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "streamlit",
+  "start_url": "/",
+  "theme_color": "#ffffff"
 }
