@@ -1,7 +1,9 @@
 {
   "name": "EDU Worksheet Adapt",
   "short_name": "WorksheetAdapt",
-  "start_url": "/",
+  "start_url": "https://educ-worksheet-adapt.streamlit.app/",
+  "scope": "https://educ-worksheet-adapt.streamlit.app/",
+  "id": "https://educ-worksheet-adapt.streamlit.app/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
