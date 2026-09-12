@@ -3,7 +3,7 @@
   "name": "Streamlit",
   "icons": [
     {
-      "src": "new_logo.png",
+      "src": "https://raw.githubusercontent.com/riyadziadeh/-Educational-adapt-platform/main/new_logo.png",
       "type": "image/png",
       "sizes": "512x512"
     }
