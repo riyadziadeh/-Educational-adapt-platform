@@ -7,5 +7,12 @@
   "scope": "/",
   "short_name": "streamlit",
   "start_url": "/",
-  "theme_color": "#ffffff"
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/riyadziadeh/-Educational-adapt-platform/main/play_store_512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
 }
