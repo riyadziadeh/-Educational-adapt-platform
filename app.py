@@ -319,14 +319,11 @@ else:
         if PDF_AVAILABLE:
             pdf = FPDF()
             pdf.add_page()
-            # استخدام خط قياسي آمن
             pdf.set_font("Arial", size=11)
             
-            # عنوان رأس الصفحة
             pdf.cell(0, 10, txt="Adapted Educational Worksheet - Special Ed System", ln=True, align="C")
             pdf.ln(5)
             
-            # معالجة السطور لتجنب أخطاء ترميز الحروف الخاصة في FPDF القياسي
             for line in text.split('\n'):
                 clean_line = line.encode('latin-1', 'ignore').decode('latin-1')
                 if clean_line.strip():
@@ -334,7 +331,11 @@ else:
                 else:
                     pdf.ln(4)
                     
-            return io.BytesIO(pdf.output(dest='S'))
+            # استخدام الطريقة الصحيحة لإخراج البايتس بصيغة bytes مباشرة في fpdf2
+            pdf_output = pdf.output()
+            if isinstance(pdf_output, str):
+                pdf_output = pdf_output.encode('latin-1')
+            return io.BytesIO(pdf_output)
         return None
 
     # تهيئة الذاكرة المؤقتة لمنع اختفاء النص عند التحميل
