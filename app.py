@@ -1091,7 +1091,7 @@ else:
     except TypeError:
         start_btn_container = st.container()
     with start_btn_container:
-        start_clicked = st.button("🚀 Start")
+        start_clicked = st.button("🚀 Start", use_container_width=True)
 
     if start_clicked:
         if not extracted_content.strip():
