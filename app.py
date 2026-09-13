@@ -13,6 +13,9 @@ from PIL import Image, ImageDraw
 # محاولة استيراد مكتبات Word و PowerPoint بأمان تامة لضمان عدم انهيار السيرفر
 try:
     from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
@@ -33,6 +36,14 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
+
+# محاولة استيراد مكتبات تشكيل النص العربي (ضرورية لعرض العربية بشكل صحيح داخل PDF)
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+    ARABIC_SHAPING_AVAILABLE = True
+except ImportError:
+    ARABIC_SHAPING_AVAILABLE = False
 
 # محاولة استيراد requests لدعم التكامل الاختياري مع Canva (Canva Connect API)
 try:
@@ -276,17 +287,25 @@ st.markdown("""
 
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغة المختارة مع خيارات التحميل المتعددة.")
 
-# مشغل الموسيقى الخلفي الخاص بك مع إعادة التشغيل التلقائي (loop) وبدون أي نصوص تسبقه
+# =========================================================================================
+# --- تعديل: الموسيقى الخلفية أصبحت اختيارية بالكامل (Opt-in) بدل التشغيل التلقائي ---
+# هذا مهم خصوصاً لأن جزءاً كبيراً من مستخدمي هذا النظام هم طلاب لديهم حساسية حسية
+# (مثل اضطراب طيف التوحد)، وصوت يعمل من تلقاء نفسه قد يكون مزعجاً أو مربكاً لهم.
+# =========================================================================================
 audio_file_path = None
 for music_name in ["music.mp3", "Music.mp3", "MUSIC.MP3", "music.WAV", "music.ogg"]:
     if os.path.exists(music_name):
         audio_file_path = music_name
         break
 
-if audio_file_path:
-    st.audio(audio_file_path, format="audio/mp3", loop=True)
-else:
-    st.audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", format="audio/mp3", loop=True)
+with st.expander("🎵 إعدادات الصوت (اختياري) / Audio Settings (Optional)"):
+    enable_bg_music = st.checkbox("تشغيل موسيقى خلفية هادئة أثناء الاستخدام", value=False)
+    enable_ding = st.checkbox("تشغيل تنبيه صوتي قصير عند اكتمال تكييف الورقة", value=True)
+    if enable_bg_music:
+        if audio_file_path:
+            st.audio(audio_file_path, format="audio/mp3", loop=True)
+        else:
+            st.audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", format="audio/mp3", loop=True)
 
 st.markdown("---")
 
@@ -296,7 +315,7 @@ st.markdown("---")
 DING_SOUND_B64 = "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1lIaUrBmER4NSpagUAtMREs9EoiKytVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LE7gEMjDULAJuESVKGYVQdJRhVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7UsTRg8vlRvYE4EkAAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
 
 def play_ready_ding():
-    """تشغيل نغمة تنبيه قصيرة تلقائياً فور جاهزية ورقة العمل."""
+    """تشغيل نغمة تنبيه قصيرة فور جاهزية ورقة العمل (تعمل فقط إذا فعّلها المستخدم)."""
     components.html(f"""
         <audio autoplay>
             <source src="data:audio/mp3;base64,{DING_SOUND_B64}" type="audio/mp3">
@@ -543,6 +562,8 @@ else:
 
     uploaded_file = st.file_uploader("قم بتمرير أو رفع ملف ورقة العمل (PDF أو Word أو TXT) / Upload Worksheet File:", type=["pdf", "docx", "txt"])
 
+    MAX_INPUT_CHARS = 3500
+
     extracted_content = ""
     if uploaded_file is not None:
         file_extension = uploaded_file.name.split(".")[-1].lower()
@@ -562,22 +583,42 @@ else:
 
             if extracted_content.strip():
                 st.success(f"تم قراءة الملف بنجاح / File successfully read: {uploaded_file.name}")
+                # --- تعديل: إعلام المستخدم بوضوح إذا كان جزء من الملف سيُقص قبل إرساله للنموذج ---
+                if len(extracted_content) > MAX_INPUT_CHARS:
+                    st.info(
+                        f"⚠️ الملف المرفوع يحتوي على {len(extracted_content):,} حرفاً، وسيتم إرسال أول "
+                        f"{MAX_INPUT_CHARS:,} حرف فقط منه إلى نموذج الذكاء الاصطناعي بسبب حدود المعالجة الحالية. "
+                        "لضمان تغطية الورقة كاملة، يُفضّل تقسيم الملفات الطويلة إلى أجزاء أصغر قبل الرفع."
+                    )
             else:
                 st.warning("⚠️ الملف المرفوع لا يحتوي على نص قابل للقراءة المباشرة. سيتم الاعتماد على معلومات النظام والعنوان لتوليد ورقة العمل.")
         except Exception as e:
             st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
 
+    # =====================================================================================
+    # === تعديل: دعم اتجاه RTL الصحيح في مستندات Word (محاذاة يمين + خاصية bidi فعلية) ===
+    # =====================================================================================
+    def _set_paragraph_rtl(paragraph):
+        """يضبط الفقرة لتكون بمحاذاة اليمين وباتجاه RTL فعلي (وليس فقط محاذاة بصرية)."""
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        pPr = paragraph._p.get_or_add_pPr()
+        bidi = OxmlElement('w:bidi')
+        bidi.set(qn('w:val'), "1")
+        pPr.append(bidi)
+
     def create_word_file(text):
-        if DOCX_AVAILABLE:
-            doc = Document()
-            doc.add_heading('ورقة العمل المطورة (التربية الخاصة) / Adapted Worksheet', 0)
-            for line in text.split('\n'):
-                doc.add_paragraph(line)
-            bio = io.BytesIO()
-            doc.save(bio)
-            bio.seek(0)
-            return bio
-        return None
+        if not DOCX_AVAILABLE:
+            return None
+        doc = Document()
+        heading = doc.add_heading('ورقة العمل المطورة (التربية الخاصة) / Adapted Worksheet', 0)
+        _set_paragraph_rtl(heading)
+        for line in text.split('\n'):
+            p = doc.add_paragraph(line)
+            _set_paragraph_rtl(p)
+        bio = io.BytesIO()
+        doc.save(bio)
+        bio.seek(0)
+        return bio
 
     # =====================================================================================
     # === تصميم بصري احترافي لملف PowerPoint (بديل محلي لا يحتاج إنترنت أو حساب Canva) ===
@@ -673,6 +714,48 @@ else:
         p.font.color.rgb = PPTX_THEME["dark_navy"]
         p.alignment = PP_ALIGN.RIGHT
 
+    # =====================================================================================
+    # === تعديل: تقسيم أذكى لمحتوى الشرائح — يجمع حسب الفقرات الطبيعية (فواصل الأسطر
+    # الفارغة) بدل تقسيم كل 5 أسطر بشكل عشوائي قد يقطع سؤالاً أو فكرة في المنتصف ===
+    # =====================================================================================
+    def split_into_slide_blocks(text, max_chars_per_slide=420):
+        raw_blocks = [b.strip() for b in text.split('\n\n') if b.strip()]
+        if not raw_blocks:
+            raw_blocks = [line.strip() for line in text.split('\n') if line.strip()]
+
+        slides = []
+        current_lines = []
+        current_len = 0
+        for block in raw_blocks:
+            block_len = len(block)
+            if block_len > max_chars_per_slide:
+                # الكتلة نفسها طويلة جداً — نقسمها على أسطرها الداخلية بدل تركها تفيض من الشريحة
+                if current_lines:
+                    slides.append(current_lines)
+                    current_lines, current_len = [], 0
+                sub_lines = [l.strip() for l in block.split('\n') if l.strip()]
+                for l in sub_lines:
+                    if current_len + len(l) > max_chars_per_slide and current_lines:
+                        slides.append(current_lines)
+                        current_lines, current_len = [], 0
+                    current_lines.append(l)
+                    current_len += len(l)
+                continue
+
+            if current_len + block_len > max_chars_per_slide and current_lines:
+                slides.append(current_lines)
+                current_lines, current_len = [], 0
+
+            for l in block.split('\n'):
+                if l.strip():
+                    current_lines.append(l.strip())
+            current_len += block_len
+
+        if current_lines:
+            slides.append(current_lines)
+
+        return slides if slides else [[text]]
+
     def create_ppt_file(text):
         if not PPTX_AVAILABLE:
             return None
@@ -746,11 +829,9 @@ else:
         p3.font.color.rgb = RGBColor(0xE0, 0xE0, 0xE0)
         p3.alignment = PP_ALIGN.RIGHT
 
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
-        chunk_size = 5
+        slide_blocks = split_into_slide_blocks(text)
         page_num = 1
-        for i in range(0, len(lines), chunk_size):
-            chunk = lines[i:i + chunk_size]
+        for chunk in slide_blocks:
             slide = prs.slides.add_slide(prs.slide_layouts[6])
             _set_slide_background(slide, PPTX_THEME["light_bg"])
 
@@ -858,32 +939,102 @@ else:
         except Exception as e:
             return None, f"تعذّر الاتصال بواجهة Canva: {e}"
 
-    def create_pdf_file(text):
-        if PDF_AVAILABLE:
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", size=11)
+    # =====================================================================================
+    # === تعديل جوهري: دعم كامل للنص العربي داخل PDF عبر تشكيل الحروف (arabic_reshaper)
+    # وترتيب الاتجاه (python-bidi) بالإضافة إلى خط Unicode عربي حقيقي بدل latin-1 القديم
+    # الذي كان يحذف كل الحروف العربية بصمت. إن لم يتوفر خط عربي في مجلد المشروع، يُنبَّه
+    # المستخدم بوضوح بدل إخراج ملف فارغ من المحتوى العربي دون علمه. ===
+    # =====================================================================================
+    ARABIC_FONT_CANDIDATES = [
+        "Amiri-Regular.ttf",
+        "NotoNaskhArabic-Regular.ttf",
+        "Cairo-Regular.ttf",
+        "Tajawal-Regular.ttf",
+    ]
 
-            pdf.cell(0, 10, txt="Adapted Educational Worksheet - Special Ed System", ln=True, align="C")
-            pdf.ln(5)
+    def _find_arabic_font():
+        for fname in ARABIC_FONT_CANDIDATES:
+            if os.path.exists(fname):
+                return fname
+        return None
+
+    def _shape_arabic_line(line):
+        """يعيد تشكيل الحروف العربية المتصلة ويرتبها بصرياً من اليمين لليسار لعرضها بشكل صحيح في PDF."""
+        reshaped = arabic_reshaper.reshape(line)
+        return get_display(reshaped)
+
+    def create_pdf_file(text):
+        """
+        يعيد tuple: (BytesIO أو None, رسالة تحذير أو None).
+        - إن توفر خط عربي + مكتبات التشكيل: يُنتج PDF عربياً كاملاً وصحيحاً بصرياً.
+        - إن لم يتوفرا: يُنتج PDF مبسّطاً بالإنجليزية/الأرقام فقط مع تنبيه صريح للمستخدم،
+          بدلاً من إسقاط النص العربي بصمت كما كان يحدث سابقاً.
+        """
+        if not PDF_AVAILABLE:
+            return None, "مكتبة FPDF غير مثبتة على الخادم."
+
+        font_path = _find_arabic_font()
+        pdf = FPDF()
+        pdf.add_page()
+
+        if font_path and ARABIC_SHAPING_AVAILABLE:
+            pdf.add_font("ArabicFont", "", font_path, uni=True)
+            pdf.set_font("ArabicFont", size=13)
+
+            title_line = _shape_arabic_line("ورقة العمل المكيّفة - نظام Edu Worksheet Adapt")
+            pdf.multi_cell(0, 10, txt=title_line, align="C")
+            pdf.ln(4)
 
             for line in text.split('\n'):
-                clean_line = line.encode('latin-1', 'ignore').decode('latin-1')
-                if clean_line.strip():
-                    pdf.multi_cell(0, 8, txt=clean_line)
+                if line.strip():
+                    display_line = _shape_arabic_line(line.strip())
+                    pdf.multi_cell(0, 8, txt=display_line, align="R")
                 else:
                     pdf.ln(4)
 
             pdf_output = pdf.output()
             if isinstance(pdf_output, str):
                 pdf_output = pdf_output.encode('latin-1')
-            return io.BytesIO(pdf_output)
-        return None
+            return io.BytesIO(pdf_output), None
 
+        else:
+            # مسار احتياطي: لا يوجد خط عربي متاح على الخادم — ننبّه المستخدم بوضوح
+            missing_parts = []
+            if not font_path:
+                missing_parts.append("ملف خط عربي (مثال: Amiri-Regular.ttf) في مجلد المشروع")
+            if not ARABIC_SHAPING_AVAILABLE:
+                missing_parts.append("مكتبتي arabic_reshaper و python-bidi (أضفهما إلى requirements.txt)")
+            warning = (
+                "⚠️ تعذّر إنتاج PDF بالعربية بشكل كامل لأن الخادم ينقصه: "
+                + " و".join(missing_parts)
+                + ". تم إنشاء نسخة PDF مبسّطة بالحروف اللاتينية والأرقام فقط، وقد لا تحتوي على النص العربي."
+            )
+            pdf.set_font("Arial", size=11)
+            pdf.multi_cell(0, 10, txt="Adapted Educational Worksheet - Special Ed System", align="C")
+            pdf.ln(5)
+            for line in text.split('\n'):
+                clean_line = line.encode('latin-1', 'ignore').decode('latin-1')
+                if clean_line.strip():
+                    pdf.multi_cell(0, 8, txt=clean_line)
+                else:
+                    pdf.ln(4)
+            pdf_output = pdf.output()
+            if isinstance(pdf_output, str):
+                pdf_output = pdf_output.encode('latin-1')
+            return io.BytesIO(pdf_output), warning
+
+    # =====================================================================================
+    # === تعديل جوهري: توليد ملفات التحميل (Word/PPT/PDF) مرة واحدة فقط لكل نص مُكيَّف،
+    # بدل إعادة توليدها (بما فيها صور الذكاء الاصطناعي المكلفة) في كل rerun من ستريمليت ===
+    # =====================================================================================
     if "adapted_text" not in st.session_state:
         st.session_state.adapted_text = None
     if "just_generated" not in st.session_state:
         st.session_state.just_generated = False
+    if "generated_files" not in st.session_state:
+        st.session_state.generated_files = {}
+    if "generated_for_text" not in st.session_state:
+        st.session_state.generated_for_text = None
 
     if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀 / Start AI Adaptation"):
         if not extracted_content.strip():
@@ -893,7 +1044,7 @@ else:
 
         with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) وتحليلها عبر الذكاء الاصطناعي... يرجى الانتظار قليلاً..."):
 
-            trimmed_content = extracted_content[:3500] if len(extracted_content) > 3500 else extracted_content
+            trimmed_content = extracted_content[:MAX_INPUT_CHARS] if len(extracted_content) > MAX_INPUT_CHARS else extracted_content
 
             if generate_alternative:
                 prompt = f"""
@@ -957,7 +1108,8 @@ else:
     if st.session_state.adapted_text:
 
         if st.session_state.just_generated:
-            play_ready_ding()
+            if enable_ding:
+                play_ready_ding()
             st.session_state.just_generated = False
 
         st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
@@ -966,14 +1118,31 @@ else:
         st.markdown("---")
         st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
 
+        # --- تعديل: توليد الملفات مرة واحدة فقط لكل نص مُكيَّف جديد، وتخزينها كبايتات جاهزة ---
+        current_text = st.session_state.adapted_text
+        if st.session_state.generated_for_text != current_text:
+            with st.spinner("جاري تجهيز ملفات Word و PowerPoint و PDF للتحميل (مرة واحدة فقط)..."):
+                word_bio = create_word_file(current_text)
+                ppt_bio = create_ppt_file(current_text)
+                pdf_bio, pdf_warning = create_pdf_file(current_text)
+
+                st.session_state.generated_files = {
+                    "word": word_bio.getvalue() if word_bio else None,
+                    "ppt": ppt_bio.getvalue() if ppt_bio else None,
+                    "pdf": pdf_bio.getvalue() if pdf_bio else None,
+                    "pdf_warning": pdf_warning,
+                }
+                st.session_state.generated_for_text = current_text
+
+        files = st.session_state.generated_files
+
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            word_data = create_word_file(st.session_state.adapted_text)
-            if word_data and DOCX_AVAILABLE:
+            if files.get("word") and DOCX_AVAILABLE:
                 st.download_button(
                     label="تحميل Word (.docx)",
-                    data=word_data,
+                    data=files["word"],
                     file_name="Adapted_Worksheet.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
@@ -981,11 +1150,10 @@ else:
                 st.info("تصدير Word غير متوفر حالياً.")
 
         with col2:
-            ppt_data = create_ppt_file(st.session_state.adapted_text)
-            if ppt_data and PPTX_AVAILABLE:
+            if files.get("ppt") and PPTX_AVAILABLE:
                 st.download_button(
                     label="تحميل PowerPoint (.pptx) 🎨",
-                    data=ppt_data,
+                    data=files["ppt"],
                     file_name="Interactive_Presentation.pptx",
                     mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
                 )
@@ -996,7 +1164,7 @@ else:
                 if st.button("🎨 إنشاء نسخة مصمّمة عبر Canva"):
                     with st.spinner("جاري إنشاء التصميم عبر Canva..."):
                         design_url, err = create_canva_design(
-                            st.session_state.adapted_text,
+                            current_text,
                             f"{selected_grade} - {selected_subject}"
                         )
                     if design_url:
@@ -1008,14 +1176,15 @@ else:
                 st.caption("ℹ️ لتفعيل التصميم عبر حساب Canva فعلياً، أضف CANVA_API_TOKEN و CANVA_BRAND_TEMPLATE_ID في Secrets.")
 
         with col3:
-            pdf_data = create_pdf_file(st.session_state.adapted_text)
-            if pdf_data and PDF_AVAILABLE:
+            if files.get("pdf") and PDF_AVAILABLE:
                 st.download_button(
                     label="تحميل PDF (.pdf)",
-                    data=pdf_data,
+                    data=files["pdf"],
                     file_name="Adapted_Worksheet.pdf",
                     mime="application/pdf"
                 )
+                if files.get("pdf_warning"):
+                    st.warning(files["pdf_warning"])
             else:
                 st.info("تصدير PDF غير متوفر حالياً.")
 
