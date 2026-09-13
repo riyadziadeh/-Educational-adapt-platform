@@ -965,14 +965,23 @@ else:
 
     def create_pdf_file(text):
         """
+        غلاف آمن: يستدعي _create_pdf_file_impl ويلتقط أي استثناء غير متوقع بدل ترك
+        التطبيق ينهار أو يختفي زر التحميل بصمت — يعيد دائماً رسالة سبب واضحة عند الفشل.
+        """
+        if not PDF_AVAILABLE:
+            return None, "⚠️ مكتبة PDF (fpdf2) غير مثبتة على الخادم. أضف السطر 'fpdf2' إلى requirements.txt ثم أعد تشغيل التطبيق (Reboot app)."
+        try:
+            return _create_pdf_file_impl(text)
+        except Exception as e:
+            return None, f"⚠️ حدث خطأ أثناء توليد ملف PDF: {e}"
+
+    def _create_pdf_file_impl(text):
+        """
         يعيد tuple: (BytesIO أو None, رسالة تحذير أو None).
         - إن توفر خط عربي + مكتبات التشكيل: يُنتج PDF عربياً كاملاً وصحيحاً بصرياً.
         - إن لم يتوفرا: يُنتج PDF مبسّطاً بالإنجليزية/الأرقام فقط مع تنبيه صريح للمستخدم،
           بدلاً من إسقاط النص العربي بصمت كما كان يحدث سابقاً.
         """
-        if not PDF_AVAILABLE:
-            return None, "مكتبة FPDF غير مثبتة على الخادم."
-
         font_path = _find_arabic_font()
         pdf = FPDF()
         pdf.add_page()
@@ -1186,7 +1195,8 @@ else:
                 if files.get("pdf_warning"):
                     st.warning(files["pdf_warning"])
             else:
-                st.info("تصدير PDF غير متوفر حالياً.")
+                # نعرض سبب الفشل الحقيقي بدل عبارة عامة، حتى يعرف المستخدم بالضبط ما الناقص
+                st.error(files.get("pdf_warning") or "تصدير PDF غير متوفر حالياً لسبب غير معروف.")
 
         st.markdown("---")
         st.markdown(f"""
