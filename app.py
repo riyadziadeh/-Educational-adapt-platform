@@ -1,3 +1,4 @@
+
 import os
 import io
 import time
@@ -29,15 +30,8 @@ st.set_page_config(
     layout="centered"
 )
 
-# تخصيص CSS متطور + وسوم الميتا (Meta Tags) لإخفاء شعار ستريملايت وضبط معاينة الرابط باحترافية
+# تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً + إخفاء أيقونة GitHub فقط
 st.markdown("""
-    <head>
-        <meta property="title" content="نظام تكييف أوراق العمل بالذكاء الاصطناعي">
-        <meta property="description" content="منصة متخصصة لتكييف أوراق العمل للتربية الخاصة ودمج الطلبة وفق المناهج التعليمية.">
-        <meta property="og:title" content="نظام تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation">
-        <meta property="og:description" content="منصة ذكية لمساعدة المعلمين وأولياء الأمور في تكييف المناهج للطلبة ذوي الاحتياجات الخاصة.">
-        <meta property="og:type" content="website">
-    </head>
     <style>
     /* إخفاء أيقونة GitHub وحدها من الشريط العلوي */
     .stAppToolbar [data-testid="stToolbarActions"] {
@@ -320,10 +314,6 @@ else:
         bio.seek(0)
         return bio
 
-    # تهيئة الذاكرة المؤقتة لمنع اختفاء النص عند التحميل
-    if "adapted_text" not in st.session_state:
-        st.session_state.adapted_text = None
-
     if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀 / Start AI Adaptation"):
         if not extracted_content.strip():
             extracted_content = f"ورقة عمل عامة لمبحث {selected_subject} للصف {selected_grade} وفق النظام {selected_system}."
@@ -385,60 +375,57 @@ else:
                     continue
 
             if adapted_text:
-                st.session_state.adapted_text = adapted_text
                 st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
+                st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
+                st.markdown(adapted_text)
+                
+                st.markdown("---")
+                st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    word_data = create_word_file(adapted_text)
+                    if word_data and DOCX_AVAILABLE:
+                        st.download_button(
+                            label="تحميل Word (.docx)",
+                            data=word_data,
+                            file_name="Adapted_Worksheet.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                    else:
+                        st.info("تصدير Word غير متوفر حالياً.")
+                    
+                with col2:
+                    ppt_data = create_ppt_file(adapted_text)
+                    if ppt_data and PPTX_AVAILABLE:
+                        st.download_button(
+                            label="تحميل PowerPoint (.pptx)",
+                            data=ppt_data,
+                            file_name="Interactive_Presentation.pptx",
+                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        )
+                    else:
+                        st.info("تصدير PowerPoint غير متوفر حالياً.")
+                    
+                with col3:
+                    txt_data = create_txt_file(adapted_text)
+                    st.download_button(
+                        label="تحميل نصي (.txt)",
+                        data=txt_data,
+                        file_name="Adapted_Worksheet.txt",
+                        mime="text/plain"
+                    )
+
+                st.markdown("---")
+                st.markdown("""
+                    <div class="animated-box" style="background-color: rgba(241, 196, 15, 0.15); border: 2px solid #F1C40F; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
+                        <h3 style="margin: 0; font-weight: 900; line-height: 1.6;">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
+                        <h4 style="margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
+                    </div>
+                """, unsafe_allow_html=True)
             else:
                 st.error("عذراً، تعذّر الاتصال بخدمة الذكاء الاصطناعي حالياً. يرجى المحاولة لاحقاً، أو التأكد من صلاحية مفتاح GOOGLE_API_KEY.")
                 if last_error:
                     st.caption(f"تفاصيل تقنية: {last_error}")
 
-    # عرض النتيجة وأزرار التحميل طالما أنها مخزنة في الذاكرة (لا تختفي عند الضغط على أي زر تحميل)
-    if st.session_state.adapted_text:
-        st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
-        st.markdown(st.session_state.adapted_text)
-        
-        st.markdown("---")
-        st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            word_data = create_word_file(st.session_state.adapted_text)
-            if word_data and DOCX_AVAILABLE:
-                st.download_button(
-                    label="تحميل Word (.docx)",
-                    data=word_data,
-                    file_name="Adapted_Worksheet.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-            else:
-                st.info("تصدير Word غير متوفر حالياً.")
-            
-        with col2:
-            ppt_data = create_ppt_file(st.session_state.adapted_text)
-            if ppt_data and PPTX_AVAILABLE:
-                st.download_button(
-                    label="تحميل PowerPoint (.pptx)",
-                    data=ppt_data,
-                    file_name="Interactive_Presentation.pptx",
-                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                )
-            else:
-                st.info("تصدير PowerPoint غير متوفر حالياً.")
-            
-        with col3:
-            txt_data = create_txt_file(st.session_state.adapted_text)
-            st.download_button(
-                label="تحميل نصي (.txt)",
-                data=txt_data,
-                file_name="Adapted_Worksheet.txt",
-                mime="text/plain"
-            )
-
-        st.markdown("---")
-        st.markdown("""
-            <div class="animated-box" style="background-color: rgba(241, 196, 15, 0.15); border: 2px solid #F1C40F; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
-                <h3 style="margin: 0; font-weight: 900; line-height: 1.6;">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
-                <h4 style="margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
-            </div>
-        """, unsafe_allow_html=True)
