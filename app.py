@@ -1089,19 +1089,27 @@ else:
             يحاول كتابة السطر بثلاث محاولات متدرجة: (1) نص عربي مُشكَّل بالكامل،
             (2) نص عربي خام بدون تشكيل (حروف منفصلة لكن مقروءة)، (3) نص مبسّط بالحروف
             اللاتينية فقط كحل أخير. يعيد True لو نجحت أي محاولة، وإلا False.
+            قبل كل محاولة نُعيد ضبط المؤشر الأفقي لبداية الهامش الأيسر صراحة، لأن فشل
+            محاولة سابقة قد يترك مؤشر fpdf2 في موضع غير صالح يُفسد كل الأسطر التالية.
             """
             height = 10 if is_title else 8
             align = "C" if is_title else "R"
+
+            def _attempt(content):
+                pdf_obj.set_x(pdf_obj.l_margin)
+                pdf_obj.multi_cell(0, height, txt=content, align=align)
+
             attempts = [
-                lambda: pdf_obj.multi_cell(0, height, txt=_shape(raw_line), align=align),
-                lambda: pdf_obj.multi_cell(0, height, txt=raw_line, align=align),
-                lambda: pdf_obj.multi_cell(0, height, txt=raw_line.encode('latin-1', 'ignore').decode('latin-1') or "-", align=align),
+                lambda: _attempt(_shape(raw_line)),
+                lambda: _attempt(raw_line),
+                lambda: _attempt(raw_line.encode('latin-1', 'ignore').decode('latin-1') or "-"),
             ]
             for attempt in attempts:
                 try:
                     attempt()
                     return True
                 except Exception:
+                    pdf_obj.set_x(pdf_obj.l_margin)
                     continue
             return False
 
