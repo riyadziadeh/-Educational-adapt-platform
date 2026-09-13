@@ -43,8 +43,8 @@ except ImportError:
 
 # إعداد صفحة ستريمليت مع العنوان الرسمي الأنيق والأيقونة
 st.set_page_config(
-    page_title="نظام تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", 
-    page_icon="https://cdn.jsdelivr.net/gh/riyadziadeh/-Educational-adapt-platform@main/store_icon.png", 
+    page_title="نظام تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform",
+    page_icon="https://cdn.jsdelivr.net/gh/riyadziadeh/-Educational-adapt-platform@main/store_icon.png",
     layout="centered"
 )
 
@@ -68,52 +68,108 @@ components.html("""
 </script>
 """, height=0, width=0)
 
-# تخصيص CSS متطور لضمان وضوح النصوص في الوضعين الفاتح والداكن وإخفاء أيقونة GitHub
-st.markdown("""
+# =========================================================================================
+# === هوية الألوان الرسمية للتطبيق: كحلي غامق + كحلي/أزرق فاتح + ذهبي + أبيض ===
+# =========================================================================================
+NAVY_DARK = "#101B2D"      # الأزرق الكحلي الغامق (خلفية الهيدر والبطاقات المختارة)
+NAVY_LIGHT = "#EAF1FB"     # الأزرق الفاتح جداً (خلفية الشبكة العامة)
+BLUE_ACCENT = "#2E6FBB"    # أزرق متوسط لدعم التدرجات والحدود
+GOLD = "#F1C40F"           # الذهبي (لون التمييز والعناصر النشطة)
+WHITE = "#FFFFFF"
+
+st.markdown(f"""
     <style>
     /* إخفاء أيقونة GitHub وحدها من الشريط العلوي */
-    .stAppToolbar [data-testid="stToolbarActions"] {
+    .stAppToolbar [data-testid="stToolbarActions"] {{
         display: none !important;
-    }
+    }}
+
+    /* خلفية عامة فاتحة زرقاء هادئة تماشياً مع هوية التطبيق */
+    .stApp {{
+        background-color: {NAVY_LIGHT};
+    }}
 
     /* تأثير الحركة الانسيابية (Animation) لصندوق الشكر */
-    @keyframes fadeInScale {
-        0% { opacity: 0; transform: scale(0.95); }
-        100% { opacity: 1; transform: scale(1); }
-    }
-    .animated-box {
+    @keyframes fadeInScale {{
+        0% {{ opacity: 0; transform: scale(0.95); }}
+        100% {{ opacity: 1; transform: scale(1); }}
+    }}
+    .animated-box {{
         animation: fadeInScale 0.8s ease-in-out;
-    }
+    }}
+
+    /* شريط علوي كحلي غامق يشبه هيدر التطبيقات مع بحث وهمي للزينة */
+    .app-topbar {{
+        background: linear-gradient(135deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
+        border-radius: 18px;
+        padding: 18px 20px;
+        margin-bottom: 22px;
+        box-shadow: 0px 6px 18px rgba(16,27,45,0.25);
+    }}
+    .app-topbar .search-fake {{
+        background-color: {WHITE};
+        border-radius: 12px;
+        padding: 10px 16px;
+        color: #7d8a9a;
+        font-weight: 700;
+        text-align: right;
+        font-size: 15px;
+    }}
 
     /* عناوين الحقول والقوائم بخط عريض وواضح جداً */
-    .stSelectbox label p, .stFileUploader label p, div[data-baseweb="select"] label, label, .stCheckbox label p {
+    .stSelectbox label p, .stFileUploader label p, div[data-baseweb="select"] label, label, .stCheckbox label p {{
         font-weight: 900 !important;
         font-size: 17px !important;
-    }
-    
-    /* دعم الوضع الفاتح (Light Mode) */
-    @media (prefers-color-scheme: light) {
-        div[data-baseweb="select"] > div, div.stFileUploader > div {
-            background-color: #FFFDEB !important;
-            border-radius: 10px !important;
-            border: 2px solid #F1C40F !important;
-        }
-        div[data-baseweb="select"] > div * {
-            color: #1A252F !important;
-        }
-    }
+        color: {NAVY_DARK} !important;
+    }}
 
-    /* دعم الوضع الداكن (Dark Mode) لضمان عدم اختلاف الألوان وعدم وضوح الكلام */
-    @media (prefers-color-scheme: dark) {
-        div[data-baseweb="select"] > div, div.stFileUploader > div {
-            background-color: #262730 !important;
-            border-radius: 10px !important;
-            border: 2px solid #F1C40F !important;
-        }
-        div[data-baseweb="select"] > div * {
-            color: #FFFFFF !important;
-        }
-    }
+    /* صناديق الاختيار (Selectbox) و رافع الملفات بهوية كحلي/ذهبي موحّدة لكل الأوضاع */
+    div[data-baseweb="select"] > div, div.stFileUploader > div {{
+        background-color: {WHITE} !important;
+        border-radius: 12px !important;
+        border: 2px solid {GOLD} !important;
+    }}
+    div[data-baseweb="select"] > div * {{
+        color: {NAVY_DARK} !important;
+    }}
+
+    /* بطاقات الشبكة الشبيهة بواجهة التطبيق المرفقة */
+    div[data-testid="stButton"] > button {{
+        width: 100%;
+        height: 108px;
+        border-radius: 16px !important;
+        border: 2px solid {BLUE_ACCENT}33 !important;
+        background-color: {WHITE} !important;
+        color: {NAVY_DARK} !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+        line-height: 1.5 !important;
+        box-shadow: 0px 3px 10px rgba(16,27,45,0.08);
+        transition: all 0.15s ease-in-out;
+        white-space: pre-line !important;
+    }}
+    div[data-testid="stButton"] > button:hover {{
+        border: 2px solid {GOLD} !important;
+        transform: translateY(-2px);
+    }}
+
+    .grid-title {{
+        font-weight: 900;
+        font-size: 19px;
+        color: {NAVY_DARK};
+        text-align: right;
+        margin: 6px 0 2px 0;
+    }}
+
+    .selection-summary {{
+        background-color: {NAVY_DARK};
+        color: {GOLD};
+        border-radius: 12px;
+        padding: 10px 16px;
+        text-align: center;
+        font-weight: 800;
+        margin: 10px 0 18px 0;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -122,8 +178,8 @@ col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
 with col_logo2:
     logo_loaded = False
     logo_filenames = [
-        "new_logo.png", 
-        "Educ_Worksheet_Adapt_Icon_(Square).png", 
+        "new_logo.png",
+        "Educ_Worksheet_Adapt_Icon_(Square).png",
         "logo.png", "logo.jpg", "Logo.png", "Logo.JPG"
     ]
     for filename in logo_filenames:
@@ -134,6 +190,13 @@ with col_logo2:
             break
     if not logo_loaded:
         st.warning("الرجاء التأكد من رفع صورة الأيقونة باسم new_logo.png في نفس مجلد المشروع.")
+
+# شريط علوي كحلي بأسلوب "شريط البحث" الموجود في التطبيقات، للزينة وربط الهوية البصرية بالتصميم المطلوب
+st.markdown(f"""
+    <div class="app-topbar">
+        <div class="search-fake">🔍 &nbsp; اختر بيانات ورقة العمل من الشبكة أدناه</div>
+    </div>
+""", unsafe_allow_html=True)
 
 # العنوان الرئيسي للنظام تحت الشعار مباشرة
 st.markdown("""
@@ -182,9 +245,6 @@ except Exception:
     api_key = os.getenv("GOOGLE_API_KEY")
 
 # إعدادات تكامل Canva الاختيارية (Canva Connect API - Autofill API)
-# يتطلب هذا التكامل حساب مطوّر على Canva وإنشاء تطبيق + قالب علامة تجارية (Brand Template)
-# ثم وضع القيم التالية في Secrets. بدون هذه الإعدادات، يعمل النظام تلقائياً بالتصميم
-# الاحترافي المدمج (الخيار الافتراضي) دون الحاجة لأي حساب Canva على الإطلاق.
 CANVA_API_TOKEN = None
 CANVA_BRAND_TEMPLATE_ID = None
 try:
@@ -202,38 +262,40 @@ else:
     client = genai.Client(api_key=api_key)
 
     grades = [
-        "الصف الأول / Grade 1", "الصف الثاني / Grade 2", "الصف الثالث / Grade 3", 
-        "الصف الرابع / Grade 4", "الصف الخامس / Grade 5", "الصف السادس / Grade 6", 
+        "الصف الأول / Grade 1", "الصف الثاني / Grade 2", "الصف الثالث / Grade 3",
+        "الصف الرابع / Grade 4", "الصف الخامس / Grade 5", "الصف السادس / Grade 6",
         "الصف السابع / Grade 7", "الصف الثامن / Grade 8", "الصف التاسع / Grade 9",
         "الصف العاشر / Grade 10"
     ]
 
     educational_systems = [
-        "وطني (National)", 
+        "وطني (National)",
         "دولي (International)"
     ]
 
     jordan_governorates = [
-        "العاصمة (عمان) / Capital (Amman)", "إربد / Irbid", "الزرقاء / Zarqa", 
-        "البلقاء / Balqa", "المفرق / Mafraq", "الكرك / Karak", 
-        "مادبا / Madaba", "جرش / Jerash", "عجلون / Ajloun", 
+        "العاصمة (عمان) / Capital (Amman)", "إربد / Irbid", "الزرقاء / Zarqa",
+        "البلقاء / Balqa", "المفرق / Mafraq", "الكرك / Karak",
+        "مادبا / Madaba", "جرش / Jerash", "عجلون / Ajloun",
         "معان / Ma'an", "الطفيلة / Tafilah", "العقبة / Aqaba"
     ]
 
-    subjects = [
-        "الرياضيات / Mathematics / Mathématiques",
-        "العلوم / Science / Sciences",
-        "اللغة العربية / Arabic Language",
-        "اللغة الإنجليزية / English Language",
-        "اللغة الفرنسية / French Language / Langue Française",
-        "التربية الإسلامية / Islamic Education",
-        "الدراسات الاجتماعية / Social Studies / Études Sociales",
-        "الفيزياء / Physics / Physique",
-        "الكيمياء / Chemistry / Chimie",
-        "الأحياء / Biology / Biologie",
-        "الحاسوب وتكنولوجيا المعلومات / Computer Science & IT",
-        "الفنون والتربية المهنية / Arts & Vocational Education"
+    # كل مادة مرتبطة بأيقونة (إيموجي) لعرضها في شبكة البطاقات على طراز الصورة المرفقة
+    subjects_with_icons = [
+        ("➗", "الرياضيات / Mathematics"),
+        ("🔬", "العلوم / Science"),
+        ("📖", "اللغة العربية / Arabic"),
+        ("🔤", "اللغة الإنجليزية / English"),
+        ("🇫🇷", "اللغة الفرنسية / French"),
+        ("🕌", "التربية الإسلامية / Islamic Ed."),
+        ("🌍", "الدراسات الاجتماعية / Social St."),
+        ("⚛️", "الفيزياء / Physics"),
+        ("🧪", "الكيمياء / Chemistry"),
+        ("🧬", "الأحياء / Biology"),
+        ("💻", "الحاسوب / Computer Sci."),
+        ("🎨", "الفنون والمهني / Arts & Voc."),
     ]
+    subjects = [s[1] for s in subjects_with_icons]
 
     languages = [
         "ثنائي اللغة (عربي / إنجليزي) - Bilingual (Arabic / English)",
@@ -271,27 +333,98 @@ else:
         ]
     }
 
-    selected_grade = st.selectbox("اختر الصف الدراسي / Select Grade:", grades)
-    selected_system = st.selectbox("اختر النظام التعليمي / Select Educational System:", educational_systems)
-    selected_subject = st.selectbox("اختر المادة الدراسية / Select Subject / Matière:", subjects)
-    selected_language = st.selectbox("اختر لغة التكييف والمخرجات / Select Output Language / Langue:", languages)
-    selected_gov = st.selectbox("اختر محافظة المدرسة في الأردن / Select Governorate in Jordan:", jordan_governorates)
-    
-    selected_category = st.selectbox("اختر فئة الحالة الخاصة / Select Special Condition Category:", list(special_conditions_categories.keys()))
-    selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة / Select Specific Condition:", special_conditions_categories[selected_category])
-
-    adaptation_levels = [
+    adaptation_levels_with_icons = [
+        ("⚖️", "تكييف متوازن وشامل"),
+        ("🧩", "تبسيط وتسهيل شديد للمفاهيم"),
+        ("🌟", "إثراء معرفي متقدم للموهوبين"),
+        ("🖐️", "دمج بصري وحسي مكثف"),
+    ]
+    adaptation_levels_full = [
         "تكييف متوازن وشامل (Balanced Adaptation)",
         "تبسيط وتسهيل شديد للمفاهيم (Deep Simplification)",
         "إثراء معرفي متقدم للموهوبين (Advanced Enrichment)",
         "دمج بصري والحسي مكثف (Sensory & Visual Integration)"
     ]
-    selected_level = st.selectbox("اختر مستوى وطبيعة التكييف / Select Adaptation Level:", adaptation_levels)
 
-    generate_alternative = st.checkbox(
-        "توليد ورقة عمل بديلة مقترحة مع بنك أسئلة تقييمي (اختياري) / Generate an alternative worksheet with an assessment quiz",
-        value=False
+    # =====================================================================================
+    # === مكوّن شبكة بطاقات قابلة للنقر يحاكي واجهة التطبيق المرفقة (أيقونة + عنوان) ===
+    # =====================================================================================
+    def render_icon_grid(title, items, state_key, columns_per_row=4, default_index=0):
+        """
+        يعرض شبكة بطاقات (أيقونة + نص) بعدد أعمدة محدد، ويحفظ الاختيار في st.session_state.
+        items: قائمة من tuples (emoji, label)
+        """
+        if state_key not in st.session_state:
+            st.session_state[state_key] = default_index
+
+        st.markdown(f'<div class="grid-title">{title}</div>', unsafe_allow_html=True)
+
+        for row_start in range(0, len(items), columns_per_row):
+            row_items = items[row_start: row_start + columns_per_row]
+            cols = st.columns(len(row_items))
+            for col, (idx_in_row, (emoji, label)) in zip(cols, enumerate(row_items)):
+                real_idx = row_start + idx_in_row
+                is_selected = st.session_state[state_key] == real_idx
+                btn_label = f"{'✅ ' if is_selected else ''}{emoji}\n{label}"
+                with col:
+                    if st.button(btn_label, key=f"{state_key}_btn_{real_idx}"):
+                        st.session_state[state_key] = real_idx
+                        st.rerun()
+
+        return st.session_state[state_key]
+
+    # ---------------- شبكة اختيار المادة الدراسية (تشبه شبكة الأيقونات في الصورة المرفقة) ----------------
+    subject_idx = render_icon_grid(
+        "📚 اختر المادة الدراسية / Select Subject",
+        subjects_with_icons,
+        "subject_idx",
+        columns_per_row=4,
+        default_index=0
     )
+    selected_subject = subjects[subject_idx]
+
+    # ---------------- شبكة اختيار مستوى ونوع التكييف ----------------
+    level_idx = render_icon_grid(
+        "🎯 اختر مستوى وطبيعة التكييف / Select Adaptation Level",
+        adaptation_levels_with_icons,
+        "level_idx",
+        columns_per_row=4,
+        default_index=0
+    )
+    selected_level = adaptation_levels_full[level_idx]
+
+    # ---------------- شبكة اختيار وضع الإخراج (تكييف الأصل أو توليد بديل) ----------------
+    mode_items = [
+        ("📝", "تكييف الورقة الأصلية"),
+        ("🆕", "ورقة بديلة + بنك أسئلة"),
+    ]
+    mode_idx = render_icon_grid(
+        "🗂️ اختر وضع التوليد / Select Output Mode",
+        mode_items,
+        "mode_idx",
+        columns_per_row=2,
+        default_index=0
+    )
+    generate_alternative = (mode_idx == 1)
+
+    st.markdown(f"""
+        <div class="selection-summary">
+            المختار حالياً: {subjects_with_icons[subject_idx][1]} &nbsp;|&nbsp;
+            {adaptation_levels_with_icons[level_idx][1]} &nbsp;|&nbsp;
+            {mode_items[mode_idx][1]}
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ---------------- بقية الحقول عبر قوائم منسدلة بنفس الهوية اللونية (كحلي/ذهبي/أبيض) ----------------
+    selected_grade = st.selectbox("اختر الصف الدراسي / Select Grade:", grades)
+    selected_system = st.selectbox("اختر النظام التعليمي / Select Educational System:", educational_systems)
+    selected_language = st.selectbox("اختر لغة التكييف والمخرجات / Select Output Language / Langue:", languages)
+    selected_gov = st.selectbox("اختر محافظة المدرسة في الأردن / Select Governorate in Jordan:", jordan_governorates)
+
+    selected_category = st.selectbox("اختر فئة الحالة الخاصة / Select Special Condition Category:", list(special_conditions_categories.keys()))
+    selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة / Select Specific Condition:", special_conditions_categories[selected_category])
 
     uploaded_file = st.file_uploader("قم بتمرير أو رفع ملف ورقة العمل (PDF أو Word أو TXT) / Upload Worksheet File:", type=["pdf", "docx", "txt"])
 
@@ -311,7 +444,7 @@ else:
                     text = page.extract_text()
                     if text:
                         extracted_content += text + "\n"
-            
+
             if extracted_content.strip():
                 st.success(f"تم قراءة الملف بنجاح / File successfully read: {uploaded_file.name}")
             else:
@@ -335,17 +468,17 @@ else:
     # === تصميم بصري احترافي لملف PowerPoint (بديل محلي لا يحتاج إنترنت أو حساب Canva) ===
     # =====================================================================================
 
-    # لوحة ألوان احترافية متناسقة مع هوية النظام (كحلي داكن + ذهبي + أبيض + تركواز هادئ)
+    # لوحة ألوان احترافية متناسقة مع هوية النظام (كحلي داكن + ذهبي + أبيض + أزرق فاتح)
     PPTX_THEME = {
-        "dark_navy": RGBColor(0x1A, 0x25, 0x2F),
+        "dark_navy": RGBColor(0x10, 0x1B, 0x2D),
         "gold": RGBColor(0xF1, 0xC4, 0x0F),
-        "teal": RGBColor(0x17, 0xA2, 0x8B),
+        "teal": RGBColor(0x2E, 0x6F, 0xBB),
         "white": RGBColor(0xFF, 0xFF, 0xFF),
-        "light_bg": RGBColor(0xF7, 0xF9, 0xFA),
-        "text_dark": RGBColor(0x2C, 0x3E, 0x50),
+        "light_bg": RGBColor(0xEA, 0xF1, 0xFB),
+        "text_dark": RGBColor(0x10, 0x1B, 0x2D),
     }
 
-    def _draw_icon(kind, size=200, fg=(241, 196, 15, 255), bg=(26, 37, 47, 255)):
+    def _draw_icon(kind, size=200, fg=(241, 196, 15, 255), bg=(16, 27, 45, 255)):
         """
         يرسم أيقونة بسيطة (شرح صوري/بصري) باستخدام PIL بدون أي اتصال بالإنترنت،
         وتُستخدم كصور توضيحية داخل شرائح PowerPoint (بديل ذاتي التوليد بدل صور خارجية).
@@ -390,13 +523,7 @@ else:
         fill.solid()
         fill.fore_color.rgb = rgb
 
-    # =====================================================================================
-    # === صور توضيحية حقيقية مرتبطة بمحتوى ورقة العمل (مولّدة بالذكاء الاصطناعي - Imagen) ===
-    # تُستخدم نفس بيانات اعتماد GOOGLE_API_KEY الموجودة أصلاً. إذا كان مفتاح الـ API لا يملك
-    # صلاحية الوصول لنموذج توليد الصور (Imagen)، أو حدث أي خطأ/انقطاع، يتحوّل النظام تلقائياً
-    # وبهدوء إلى الأيقونات التوضيحية المرسومة محلياً (بدون أي توقف أو خطأ ظاهر للمستخدم).
-    # =====================================================================================
-    _ai_images_state = {"available": True}  # يتوقف تلقائياً بعد أول فشل لتفادي تكرار المحاولات البطيئة
+    _ai_images_state = {"available": True}
 
     def _generate_ai_illustration(prompt_text):
         if not _ai_images_state["available"]:
@@ -407,7 +534,7 @@ else:
                 prompt=(
                     "رسمة تعليمية بسيطة بأسلوب Flat Design نظيف وواضح، بدون أي كتابة أو حروف "
                     "أو أرقام داخل الصورة إطلاقاً، بألوان هادئة تتناسق مع الذهبي (#F1C40F) "
-                    f"والكحلي الداكن (#1A252F)، توضّح بصرياً الفكرة التالية: {prompt_text}"
+                    f"والكحلي الداكن (#101B2D)، توضّح بصرياً الفكرة التالية: {prompt_text}"
                 ),
                 config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="1:1"),
             )
@@ -416,8 +543,6 @@ else:
             bio.seek(0)
             return bio
         except Exception:
-            # أول فشل (نموذج غير متاح لهذا المفتاح، انتهاء الحصة، انقطاع الشبكة...) يوقف باقي
-            # المحاولات لهذه الورقة فقط، والتصميم يكمل بالأيقونات المحلية بدون أي انقطاع للمستخدم
             _ai_images_state["available"] = False
             return None
 
@@ -443,11 +568,9 @@ else:
 
         icon_cycle = ["idea", "check", "star", "book", "target", "pencil"]
 
-        # ---------------- شريحة الغلاف الاحترافية ----------------
-        slide = prs.slides.add_slide(prs.slide_layouts[6])  # تخطيط فارغ للتحكم الكامل بالتصميم
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
         _set_slide_background(slide, PPTX_THEME["dark_navy"])
 
-        # شريط ذهبي مائل أعلى الشريحة كلمسة تصميم Canva-style
         band = slide.shapes.add_shape(MSO_SHAPE.PARALLELOGRAM, Inches(-1), Inches(-0.6), Inches(9), Inches(2.2))
         band.fill.solid()
         band.fill.fore_color.rgb = PPTX_THEME["gold"]
@@ -460,23 +583,20 @@ else:
         band2.line.fill.background()
         band2.shadow.inherit = False
 
-        # الشعار إن وجد — بحجم كبير وبارز على الصفحة الأولى (فوق الشريط الذهبي مباشرة)
         for filename in ["new_logo.png", "Educ_Worksheet_Adapt_Icon_(Square).png", "logo.png", "logo.jpg"]:
             if os.path.exists(filename):
                 slide.shapes.add_picture(filename, Inches(0.7), Inches(0.25), height=Inches(1.9))
                 break
 
-        # صورة توضيحية حقيقية لموضوع الورقة (مادة/صف) على الجهة اليمنى من الغلاف
         cover_illustration = _generate_ai_illustration(
             f"موضوع مادة {selected_subject} لطلاب {selected_grade}"
         )
         if cover_illustration:
             slide.shapes.add_picture(cover_illustration, Inches(8.6), Inches(1.9), height=Inches(3.4))
         else:
-            icon_bio = _draw_icon("idea", size=400, fg=(0x1A, 0x25, 0x2F, 255), bg=(0xF1, 0xC4, 0x0F, 255))
+            icon_bio = _draw_icon("idea", size=400, fg=(0x10, 0x1B, 0x2D, 255), bg=(0xF1, 0xC4, 0x0F, 255))
             slide.shapes.add_picture(icon_bio, Inches(9.3), Inches(2.4), height=Inches(2.6))
 
-        # عمود النص محصور بعرض ينتهي قبل منطقة الصورة التوضيحية (تبدأ عند 8.3 إنش) لمنع التداخل
         title_box = slide.shapes.add_textbox(Inches(0.6), Inches(2.7), Inches(7.5), Inches(1.7))
         tf = title_box.text_frame
         tf.word_wrap = True
@@ -511,7 +631,6 @@ else:
         p3.font.color.rgb = RGBColor(0xE0, 0xE0, 0xE0)
         p3.alignment = PP_ALIGN.RIGHT
 
-        # ---------------- شرائح المحتوى ----------------
         lines = [line.strip() for line in text.split('\n') if line.strip()]
         chunk_size = 5
         page_num = 1
@@ -520,7 +639,6 @@ else:
             slide = prs.slides.add_slide(prs.slide_layouts[6])
             _set_slide_background(slide, PPTX_THEME["light_bg"])
 
-            # شريط علوي ملوّن بعنوان الشريحة
             header = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, Inches(1.15))
             header.fill.solid()
             header.fill.fore_color.rgb = PPTX_THEME["dark_navy"]
@@ -541,8 +659,6 @@ else:
             hp.font.color.rgb = PPTX_THEME["white"]
             hp.alignment = PP_ALIGN.RIGHT
 
-            # صورة توضيحية حقيقية مرتبطة بمحتوى هذه المحطة تحديداً (أول 3 محطات فقط لتفادي
-            # الإبطاء)، وبعدها/عند تعذّر التوليد تُستخدم أيقونة توضيحية محلية بديلة تلقائياً
             slide_illustration = None
             if page_num <= 3:
                 slide_illustration = _generate_ai_illustration(chunk[0][:120])
@@ -553,11 +669,10 @@ else:
             else:
                 icon_kind = icon_cycle[(page_num - 1) % len(icon_cycle)]
                 icon_bio = _draw_icon(icon_kind, size=220,
-                                       fg=(0x1A, 0x25, 0x2F, 255), bg=(0xF1, 0xC4, 0x0F, 255))
+                                       fg=(0x10, 0x1B, 0x2D, 255), bg=(0xF1, 0xC4, 0x0F, 255))
                 slide.shapes.add_picture(icon_bio, Inches(11.3), Inches(0.15), height=Inches(0.9))
                 content_width = Inches(11.9)
 
-            # صندوق المحتوى النصي مع تعداد نقطي ملوّن
             body_box = slide.shapes.add_textbox(Inches(0.7), Inches(1.5), content_width, Inches(5.5))
             body_tf = body_box.text_frame
             body_tf.word_wrap = True
@@ -573,7 +688,6 @@ else:
             _add_footer(slide, prs, page_num)
             page_num += 1
 
-        # ---------------- شريحة ختامية ----------------
         closing = prs.slides.add_slide(prs.slide_layouts[6])
         _set_slide_background(closing, PPTX_THEME["dark_navy"])
         cbox = closing.shapes.add_textbox(Inches(1), Inches(3.1), Inches(11.3), Inches(1.3))
@@ -590,12 +704,6 @@ else:
         bio.seek(0)
         return bio
 
-    # =====================================================================================
-    # === تكامل اختياري حقيقي مع Canva عبر Canva Connect API (Autofill API) ===
-    # يتطلب: CANVA_API_TOKEN و CANVA_BRAND_TEMPLATE_ID في Secrets (من حساب Canva Developer
-    # الخاص بكم بعد إنشاء تطبيق Canva وربط قالب علامة تجارية Brand Template يحتوي حقل نص
-    # باسم "content". بدون هذين المفتاحين يبقى النظام يعمل تلقائياً بالتصميم المدمج أعلاه.
-    # =====================================================================================
     def create_canva_design(text, title_text):
         if not CANVA_INTEGRATION_ENABLED:
             return None, "لم يتم ضبط بيانات اعتماد Canva (CANVA_API_TOKEN / CANVA_BRAND_TEMPLATE_ID)."
@@ -640,25 +748,23 @@ else:
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", size=11)
-            
+
             pdf.cell(0, 10, txt="Adapted Educational Worksheet - Special Ed System", ln=True, align="C")
             pdf.ln(5)
-            
+
             for line in text.split('\n'):
                 clean_line = line.encode('latin-1', 'ignore').decode('latin-1')
                 if clean_line.strip():
                     pdf.multi_cell(0, 8, txt=clean_line)
                 else:
                     pdf.ln(4)
-                    
-            # استخدام الطريقة الصحيحة لإخراج البايتس بصيغة bytes مباشرة في fpdf2
+
             pdf_output = pdf.output()
             if isinstance(pdf_output, str):
                 pdf_output = pdf_output.encode('latin-1')
             return io.BytesIO(pdf_output)
         return None
 
-    # تهيئة الذاكرة المؤقتة لمنع اختفاء النص عند التحميل
     if "adapted_text" not in st.session_state:
         st.session_state.adapted_text = None
     if "just_generated" not in st.session_state:
@@ -669,40 +775,40 @@ else:
             extracted_content = f"ورقة عمل عامة لمبحث {selected_subject} للصف {selected_grade} وفق النظام {selected_system}."
 
         mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
-        
+
         with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) وتحليلها عبر الذكاء الاصطناعي... يرجى الانتظار قليلاً..."):
-            
+
             trimmed_content = extracted_content[:3500] if len(extracted_content) > 3500 else extracted_content
 
             if generate_alternative:
                 prompt = f"""
                 أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
                 مطلوب تصميم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
-                
+
                 البيانات الأساسية:
                 - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
                 - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
-                
+
                 محتوى الملف المرفق:
                 {trimmed_content}
-                
+
                 اكتب ورقة العمل والأسئلة والتمارين والحلول بخطوات تفصيلية كاملة وواضحة باللغة العربية.
                 """
             else:
                 prompt = f"""
                 أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
                 مطلوب تنفيذ **تكييف وتطوير شامل ودقيق** لورقة العمل التالية لمبحث ({selected_subject}) بناءً على مستوى التكييف ({selected_level}) والحالة الخاصة ({selected_condition}).
-                
+
                 البيانات الأساسية:
                 - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
                 - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
-                
+
                 محتوى الملف المرفق:
                 {trimmed_content}
-                
+
                 قم بإعادة صياغة ورقة العمل وكتابة الأسئلة المعدلة، التمارين التدريبية، والحلول بشكل كامل ووافٍ دون أي نقصان وبأسلوب تربوي متميز.
                 """
-            
+
             adapted_text = None
             models_to_try = ["gemini-3.5-flash-lite", "gemini-2.5-flash"]
             last_error = None
@@ -733,22 +839,20 @@ else:
                 if last_error:
                     st.caption(f"تفاصيل تقنية: {last_error}")
 
-    # عرض النتيجة وأزرار التحميل طالما أنها مخزنة في الذاكرة (لا تختفي عند التحميل)
     if st.session_state.adapted_text:
 
-        # تشغيل نغمة "طنّة" صغيرة تلقائياً مرة واحدة فقط فور جاهزية الورقة
         if st.session_state.just_generated:
             play_ready_ding()
             st.session_state.just_generated = False
 
         st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
         st.markdown(st.session_state.adapted_text)
-        
+
         st.markdown("---")
         st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
-        
+
         col1, col2, col3 = st.columns(3)
-        
+
         with col1:
             word_data = create_word_file(st.session_state.adapted_text)
             if word_data and DOCX_AVAILABLE:
@@ -760,7 +864,7 @@ else:
                 )
             else:
                 st.info("تصدير Word غير متوفر حالياً.")
-            
+
         with col2:
             ppt_data = create_ppt_file(st.session_state.adapted_text)
             if ppt_data and PPTX_AVAILABLE:
@@ -773,7 +877,6 @@ else:
             else:
                 st.info("تصدير PowerPoint غير متوفر حالياً.")
 
-            # زر إضافي اختياري: إنشاء نسخة عبر Canva الفعلي إن توفرت بيانات الاعتماد
             if CANVA_INTEGRATION_ENABLED:
                 if st.button("🎨 إنشاء نسخة مصمّمة عبر Canva"):
                     with st.spinner("جاري إنشاء التصميم عبر Canva..."):
@@ -788,7 +891,7 @@ else:
                         st.warning(err)
             else:
                 st.caption("ℹ️ لتفعيل التصميم عبر حساب Canva فعلياً، أضف CANVA_API_TOKEN و CANVA_BRAND_TEMPLATE_ID في Secrets.")
-            
+
         with col3:
             pdf_data = create_pdf_file(st.session_state.adapted_text)
             if pdf_data and PDF_AVAILABLE:
@@ -802,9 +905,9 @@ else:
                 st.info("تصدير PDF غير متوفر حالياً.")
 
         st.markdown("---")
-        st.markdown("""
-            <div class="animated-box" style="background-color: rgba(241, 196, 15, 0.15); border: 2px solid #F1C40F; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
-                <h3 style="margin: 0; font-weight: 900; line-height: 1.6;">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
-                <h4 style="margin: 8px 0 0 0; font-weight: 900; line-height: 1.6;">Thank you for using Edu Worksheet Adapt</h4>
+        st.markdown(f"""
+            <div class="animated-box" style="background-color: rgba(241, 196, 15, 0.15); border: 2px solid {GOLD}; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
+                <h3 style="margin: 0; font-weight: 900; line-height: 1.6; color: {NAVY_DARK};">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
+                <h4 style="margin: 8px 0 0 0; font-weight: 900; line-height: 1.6; color: {NAVY_DARK};">Thank you for using Edu Worksheet Adapt</h4>
             </div>
         """, unsafe_allow_html=True)
