@@ -136,14 +136,16 @@ st.markdown(f"""
     /* بطاقات الشبكة الشبيهة بواجهة التطبيق المرفقة */
     div[data-testid="stButton"] > button {{
         width: 100%;
-        height: 108px;
+        min-height: 108px;
+        height: auto !important;
+        padding: 16px 12px !important;
         border-radius: 16px !important;
         border: 2px solid {BLUE_ACCENT}33 !important;
         background-color: {WHITE} !important;
         color: {NAVY_DARK} !important;
         font-weight: 800 !important;
-        font-size: 15px !important;
-        line-height: 1.5 !important;
+        font-size: 16px !important;
+        line-height: 1.6 !important;
         box-shadow: 0px 3px 10px rgba(16,27,45,0.08);
         transition: all 0.15s ease-in-out;
         white-space: pre-line !important;
@@ -397,10 +399,10 @@ else:
     }
 
     adaptation_levels_with_icons = [
-        ("⚖️", "تكييف متوازن وشامل"),
-        ("🧩", "تبسيط وتسهيل شديد للمفاهيم"),
-        ("🌟", "إثراء معرفي متقدم للموهوبين"),
-        ("🖐️", "دمج بصري وحسي مكثف"),
+        ("⚖️", "تكييف متوازن وشامل\nBalanced Adaptation"),
+        ("🧩", "تبسيط وتسهيل شديد للمفاهيم\nDeep Simplification"),
+        ("🌟", "إثراء معرفي متقدم للموهوبين\nAdvanced Enrichment"),
+        ("🖐️", "دمج بصري وحسي مكثف\nSensory & Visual Integration"),
     ]
     adaptation_levels_full = [
         "تكييف متوازن وشامل (Balanced Adaptation)",
@@ -481,7 +483,7 @@ else:
         "🎯 اختر مستوى وطبيعة التكييف / Select Adaptation Level",
         adaptation_levels_with_icons,
         "level_idx",
-        columns_per_row=4,
+        columns_per_row=1,
         default_index=0
     )
     selected_level = adaptation_levels_full[level_idx]
@@ -503,7 +505,7 @@ else:
     st.markdown(f"""
         <div class="selection-summary">
             المختار حالياً: {subjects_with_icons[subject_idx][1]} &nbsp;|&nbsp;
-            {adaptation_levels_with_icons[level_idx][1]} &nbsp;|&nbsp;
+            {selected_level} &nbsp;|&nbsp;
             {mode_items[mode_idx][1]}
         </div>
     """, unsafe_allow_html=True)
