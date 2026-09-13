@@ -562,7 +562,7 @@ else:
 
     uploaded_file = st.file_uploader("قم بتمرير أو رفع ملف ورقة العمل (PDF أو Word أو TXT) / Upload Worksheet File:", type=["pdf", "docx", "txt"])
 
-    MAX_INPUT_CHARS = 3500
+    MAX_INPUT_CHARS = 20000
 
     extracted_content = ""
     if uploaded_file is not None:
@@ -1085,7 +1085,7 @@ else:
                         contents=prompt,
                         config=types.GenerateContentConfig(
                             temperature=0.7,
-                            max_output_tokens=4000,
+                            max_output_tokens=8000,
                         ),
                     )
                     if response and response.text:
