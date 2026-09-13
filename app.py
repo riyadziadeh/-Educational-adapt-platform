@@ -390,6 +390,37 @@ else:
         fill.solid()
         fill.fore_color.rgb = rgb
 
+    # =====================================================================================
+    # === صور توضيحية حقيقية مرتبطة بمحتوى ورقة العمل (مولّدة بالذكاء الاصطناعي - Imagen) ===
+    # تُستخدم نفس بيانات اعتماد GOOGLE_API_KEY الموجودة أصلاً. إذا كان مفتاح الـ API لا يملك
+    # صلاحية الوصول لنموذج توليد الصور (Imagen)، أو حدث أي خطأ/انقطاع، يتحوّل النظام تلقائياً
+    # وبهدوء إلى الأيقونات التوضيحية المرسومة محلياً (بدون أي توقف أو خطأ ظاهر للمستخدم).
+    # =====================================================================================
+    _ai_images_state = {"available": True}  # يتوقف تلقائياً بعد أول فشل لتفادي تكرار المحاولات البطيئة
+
+    def _generate_ai_illustration(prompt_text):
+        if not _ai_images_state["available"]:
+            return None
+        try:
+            response = client.models.generate_images(
+                model="imagen-4.0-generate-001",
+                prompt=(
+                    "رسمة تعليمية بسيطة بأسلوب Flat Design نظيف وواضح، بدون أي كتابة أو حروف "
+                    "أو أرقام داخل الصورة إطلاقاً، بألوان هادئة تتناسق مع الذهبي (#F1C40F) "
+                    f"والكحلي الداكن (#1A252F)، توضّح بصرياً الفكرة التالية: {prompt_text}"
+                ),
+                config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="1:1"),
+            )
+            img_bytes = response.generated_images[0].image.image_bytes
+            bio = io.BytesIO(img_bytes)
+            bio.seek(0)
+            return bio
+        except Exception:
+            # أول فشل (نموذج غير متاح لهذا المفتاح، انتهاء الحصة، انقطاع الشبكة...) يوقف باقي
+            # المحاولات لهذه الورقة فقط، والتصميم يكمل بالأيقونات المحلية بدون أي انقطاع للمستخدم
+            _ai_images_state["available"] = False
+            return None
+
     def _add_footer(slide, prs, page_num):
         left = Inches(0.3)
         top = prs.slide_height - Inches(0.42)
@@ -429,33 +460,54 @@ else:
         band2.line.fill.background()
         band2.shadow.inherit = False
 
-        # الشعار إن وجد
+        # الشعار إن وجد — بحجم كبير وبارز على الصفحة الأولى (فوق الشريط الذهبي مباشرة)
         for filename in ["new_logo.png", "Educ_Worksheet_Adapt_Icon_(Square).png", "logo.png", "logo.jpg"]:
             if os.path.exists(filename):
-                slide.shapes.add_picture(filename, Inches(0.6), Inches(0.5), height=Inches(1.1))
+                slide.shapes.add_picture(filename, Inches(0.7), Inches(0.25), height=Inches(1.9))
                 break
 
-        title_box = slide.shapes.add_textbox(Inches(0.8), Inches(2.7), Inches(11.7), Inches(1.5))
+        # صورة توضيحية حقيقية لموضوع الورقة (مادة/صف) على الجهة اليمنى من الغلاف
+        cover_illustration = _generate_ai_illustration(
+            f"موضوع مادة {selected_subject} لطلاب {selected_grade}"
+        )
+        if cover_illustration:
+            slide.shapes.add_picture(cover_illustration, Inches(8.6), Inches(1.9), height=Inches(3.4))
+        else:
+            icon_bio = _draw_icon("idea", size=400, fg=(0x1A, 0x25, 0x2F, 255), bg=(0xF1, 0xC4, 0x0F, 255))
+            slide.shapes.add_picture(icon_bio, Inches(9.3), Inches(2.4), height=Inches(2.6))
+
+        # عمود النص محصور بعرض ينتهي قبل منطقة الصورة التوضيحية (تبدأ عند 8.3 إنش) لمنع التداخل
+        title_box = slide.shapes.add_textbox(Inches(0.6), Inches(2.7), Inches(7.5), Inches(1.7))
         tf = title_box.text_frame
         tf.word_wrap = True
         p = tf.paragraphs[0]
-        p.text = "ورقة العمل المكيّفة  |  Adapted Worksheet"
-        p.font.size = Pt(40)
+        p.text = "ورقة العمل المكيّفة"
+        p.font.size = Pt(36)
         p.font.bold = True
         p.font.color.rgb = PPTX_THEME["gold"]
         p.alignment = PP_ALIGN.RIGHT
+        p_en = tf.add_paragraph()
+        p_en.text = "Adapted Worksheet"
+        p_en.font.size = Pt(20)
+        p_en.font.color.rgb = PPTX_THEME["white"]
+        p_en.alignment = PP_ALIGN.RIGHT
 
-        subtitle_box = slide.shapes.add_textbox(Inches(0.8), Inches(4.1), Inches(11.7), Inches(1.4))
+        subtitle_box = slide.shapes.add_textbox(Inches(0.6), Inches(4.6), Inches(7.5), Inches(1.6))
         tf2 = subtitle_box.text_frame
         tf2.word_wrap = True
         p2 = tf2.paragraphs[0]
-        p2.text = f"{selected_grade}   |   {selected_subject}"
-        p2.font.size = Pt(22)
+        p2.text = f"{selected_grade}"
+        p2.font.size = Pt(18)
         p2.font.color.rgb = PPTX_THEME["white"]
         p2.alignment = PP_ALIGN.RIGHT
+        p2b = tf2.add_paragraph()
+        p2b.text = f"{selected_subject}"
+        p2b.font.size = Pt(18)
+        p2b.font.color.rgb = PPTX_THEME["white"]
+        p2b.alignment = PP_ALIGN.RIGHT
         p3 = tf2.add_paragraph()
         p3.text = f"{selected_condition.split(' / ')[0]}   |   {selected_level.split('(')[0]}"
-        p3.font.size = Pt(16)
+        p3.font.size = Pt(14)
         p3.font.color.rgb = RGBColor(0xE0, 0xE0, 0xE0)
         p3.alignment = PP_ALIGN.RIGHT
 
@@ -489,14 +541,24 @@ else:
             hp.font.color.rgb = PPTX_THEME["white"]
             hp.alignment = PP_ALIGN.RIGHT
 
-            # أيقونة/صورة توضيحية دوّارة أعلى يسار الشريحة (شرح بصري لكل محطة)
-            icon_kind = icon_cycle[(page_num - 1) % len(icon_cycle)]
-            icon_bio = _draw_icon(icon_kind, size=220,
-                                   fg=(0x1A, 0x25, 0x2F, 255), bg=(0xF1, 0xC4, 0x0F, 255))
-            slide.shapes.add_picture(icon_bio, Inches(11.3), Inches(0.15), height=Inches(0.9))
+            # صورة توضيحية حقيقية مرتبطة بمحتوى هذه المحطة تحديداً (أول 3 محطات فقط لتفادي
+            # الإبطاء)، وبعدها/عند تعذّر التوليد تُستخدم أيقونة توضيحية محلية بديلة تلقائياً
+            slide_illustration = None
+            if page_num <= 3:
+                slide_illustration = _generate_ai_illustration(chunk[0][:120])
+
+            if slide_illustration:
+                slide.shapes.add_picture(slide_illustration, Inches(10.0), Inches(1.35), height=Inches(2.2))
+                content_width = Inches(9.1)
+            else:
+                icon_kind = icon_cycle[(page_num - 1) % len(icon_cycle)]
+                icon_bio = _draw_icon(icon_kind, size=220,
+                                       fg=(0x1A, 0x25, 0x2F, 255), bg=(0xF1, 0xC4, 0x0F, 255))
+                slide.shapes.add_picture(icon_bio, Inches(11.3), Inches(0.15), height=Inches(0.9))
+                content_width = Inches(11.9)
 
             # صندوق المحتوى النصي مع تعداد نقطي ملوّن
-            body_box = slide.shapes.add_textbox(Inches(0.7), Inches(1.5), Inches(11.9), Inches(5.5))
+            body_box = slide.shapes.add_textbox(Inches(0.7), Inches(1.5), content_width, Inches(5.5))
             body_tf = body_box.text_frame
             body_tf.word_wrap = True
 
