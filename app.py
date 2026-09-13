@@ -166,22 +166,35 @@ st.markdown(f"""
         transform: translateY(-2px);
     }}
 
-    /* ===== زر "ابدأ تكييف ورقة العمل" الرئيسي: نص كحلي غامق كبير وواضح داخل مستطيل أبيض بارز ===== */
+    /* ===== زر "ابدأ تكييف ورقة العمل" الرئيسي: نص أزرق كحلي واضح (وليس أسود تقريباً)، كبير، وبدون أي قطع للنص ===== */
     div[class*="st-key-start-ai-button"] div[data-testid="stButton"] > button {{
         background-color: {WHITE} !important;
-        color: {NAVY_DARK} !important;
+        color: {BLUE_ACCENT} !important;
         font-weight: 900 !important;
-        font-size: 22px !important;
-        line-height: 1.5 !important;
+        font-size: 19px !important;
+        line-height: 1.6 !important;
+        height: auto !important;
         min-height: 90px !important;
-        padding: 18px 16px !important;
+        padding: 18px 14px !important;
         border-radius: 18px !important;
         border: 3px solid {NAVY_DARK} !important;
         box-shadow: 0px 6px 16px rgba(16,27,45,0.18);
+        white-space: normal !important;
+        overflow: visible !important;
+        word-wrap: break-word !important;
     }}
     div[class*="st-key-start-ai-button"] div[data-testid="stButton"] > button:hover {{
         border: 3px solid {GOLD} !important;
-        color: {NAVY_DARK} !important;
+        color: {BLUE_ACCENT} !important;
+    }}
+    div[class*="st-key-start-ai-button"] div[data-testid="stButton"] > button p {{
+        color: {BLUE_ACCENT} !important;
+        font-weight: 900 !important;
+        font-size: 19px !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        word-wrap: break-word !important;
+        margin: 0 !important;
     }}
 
     .grid-title {{
