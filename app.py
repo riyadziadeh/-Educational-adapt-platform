@@ -1,12 +1,14 @@
 import os
 import io
 import time
+import base64
+import random
 import streamlit as st
 import streamlit.components.v1 as components
 from google import genai
 from google.genai import types
 import pypdf
-from PIL import Image
+from PIL import Image, ImageDraw
 
 # محاولة استيراد مكتبات Word و PowerPoint بأمان تامة لضمان عدم انهيار السيرفر
 try:
@@ -17,8 +19,10 @@ except ImportError:
 
 try:
     from pptx import Presentation
-    from pptx.util import Inches, Pt
+    from pptx.util import Inches, Pt, Emu
     from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+    from pptx.enum.shapes import MSO_SHAPE
     PPTX_AVAILABLE = True
 except ImportError:
     PPTX_AVAILABLE = False
@@ -29,6 +33,13 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
+
+# محاولة استيراد requests لدعم التكامل الاختياري مع Canva (Canva Connect API)
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
 
 # إعداد صفحة ستريمليت مع العنوان الرسمي الأنيق والأيقونة
 st.set_page_config(
@@ -148,12 +159,42 @@ else:
 
 st.markdown("---")
 
+# =========================================================================================
+# صوت تنبيه صغير (طنة) عند اكتمال تجهيز ورقة العمل — مضمّن مباشرة بالكود (Base64) بدون إنترنت
+# =========================================================================================
+DING_SOUND_B64 = "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjE2LjEwMAAAAAAAAAAAAAAA//tQwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAkAAAeMwANDRQUFBsbGyIiIikpMDAwNzc3Pj4+RUVMTExSUlJZWVlgYGBnZ25ubnV1dXx8fIODioqKkZGRmJiYn5+fpqasrKyzs7O6urrBwcjIyM/Pz9bW1t3d3eTk6+vr8vLy+fn5//8AAAAATGF2YzYwLjMxAAAAAAAAAAAAAAAAJAS2AAAAAAAAHjPDykF+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/7UMQAAAlkVwQVrAAJd4gj5zvQAM6eVw27bW1zgkOZUybBcao8GGAaRNGzN7DOLBNqfL1HfYHOKIO3D1QHQUfAIS+bTGsM4ch/IxGIxLJfT09PT09OHgAAAACvQ8PHgAAgADQXUKUtLWNL//7gmCIobMKBL8ODoz+JYwQCg4ZOwx2Bc6IuEzfBMxQNoy2BIy1J80eAEzj2EwTF9HvHIOEv/MBwS9yNC87XVd9P3+LfJbqvbt3ra/1Uf+K+L+oYVQ5lzKzRqoA4Apcw6AMYD4L/+1LECQML2D0UXe8AAWAG4cAd+FgBgpgTEgLBj5ZVGYwHQYaoHoFAfMDwCUwMgxzEUCLOGRUAxVxBjCFAgViCwAqBJtpuMSIyA7TIS3zt2vnv/exPf3tF/3Uf/p93+3drr2vZSgKAAWYaIGSkxniGbrFGJQPadXPVJq2C6mJGJsYJQA4KATMAQB0wOQajxZfjMIcCAIAdUucWLXivl9SfMRlG57V/07v9zq7+6R+t/Ylm5O1NP86lfllL9uCM4oESlJiJsyJ+qhikiyne5XGbAf/7UsQLgQt4Nw4A68LBbAaiZb/5QIh5ioBImDOB+YFwGQMAwMBQH87lpEDByAnBwCylrjRW+Dx1Fqv/t1HcUbjkabbPM7jqr2ElKdbRsW/VSyrSnGIro7CnqgAhQRf33/kbVkggcCmBC4XQB2bMAQCLjBlUIwwMIGkMGMAAKAgAEB8QgJgkFo4M3vzBFASLesuh2XDEy9ztfX03Wdn19JK9KV9Htd7qNhOtDfYm/FJ2y7TMM7VwAAAAQLUqQ/xFkSGJbIxYozBs3cIwqBDzZ1hb//tSxA4AChg1F4DrwsENBiQ0LHSQMzwMUwUwJzA0AJGgFlYgAB2a0TOhgUACphOTGqU8/H3+z2oup/p9qKrvSLdV1P+3//31169QQAAFU25FE2kJAbcJK9iG5wQYojGfHcCbhiOYSBkDgrDAAWYCQSOfeLDAKcmVAsTdbu/Z91P9vc72elP/v+36///qQAAHP3/YPU4GhAaJo+CQEwgAtTABAoIwT1LmMCUB6DBQDtMB4DwwGwEwcBsYFAP5r7VfGB0BGWyYC+0yQIUbe7+p1O7/+1LEIgEKuDUQrH/IUUWGoqR9eJAn+r+joFbvamzK7iX/r+6j67YAAgVVqYEVpFzQCAMeONAfOTMMMgSs3gZJTPGDdMOEGgDAml8xAAiYAoNRm8xHmAuA8nK6URuEzNforFP7rfT6qm/8l7M83Od1H7aK7O9qfXcq3BAAAUcRRBNmuEgNuEfhCG5wUYnjSfBdmbeiWBi4AQJl3EZCUIzPL8kEMBTNwWI9yP2DfRW7V+f9nsu/r9XrG2UJ+j/9lXyFECgWEANEDV8AgJwgAtREFP/7UsQsAAjEMyGh46ShNIbiAT/5CBGBIpdhgIAPMYQIS5CCIBQIwCA2YAgRxhh26igFCLrPoNmK5p/S//6N2z5/ts/v1/dTt1u7OvJW2o/6qu8BKqwWBmDCGVKGqTnZrGHYKScWs/ZoxB5mDWCkYKQApQBmroQg1mOHP8AQF0lGyxybqYX3dHq/92v//9/9d1Pou+j6vV/+n3QTTL6LBoQGjLngtGIeLic/Vm5qFiMmEQA0YN4F5gcAOBgFANB2M+CzkwDAHEG2YQHKKcHN7Fr6//tSxEADyPA7EgPrxIEqhuIADXhY9vkKuu7tchbOrf+vR0bv/9n1Vf//7B7QURgUEmDDIBQApNhcIwMBAQmjAEQaYwWAPTAOA4MA0BEOAOBgNppezKGAqA6mg4cQldIGXdS//6n+32e309n08h+79C3N+hX/6SAFkVS1+IsiRtLZGWQbSp/8GFkHSbZbp5m1BUmGGAqAgRRYAMhAJEAKRpCOImAwAksO7ErqVw8+6j1fsRv/+rb//76en////bUqcAAAAE0zI1MIHTYA+7JDJDP/+1LEVIEJwDcSDf/KASSG4uQc+Fiywwkw2zXKbvMukKUwpAdjAjANMAoAgCAEGASCGaUa7BgQgFrEf+UV8AzxZPo/s3+7K/s/6dXf7mf/6///+RNBRGAwSYMMmAoQEmzABwjAwOZCYMBjBqjBDD5GQMASAmYA4A5gSAsG+ZAaYJgCRdNrj/xinzdTub//b6f+O0en+d+n//vp3dGnReOiqsFgZgQhlSRqkJ3Zhh6CTnHvIOaQwbZhIhjBwUIYBe0cwFwPziZdMMFMAMMAAZfDkf/7UsRmgwmANxmD58SBNociQb/5QLpKge/+j+3t+VXZ//Ro932b9X/n/13N7ye+i00bGVo+GXLnMqGHGK+cOlXZoiiFmEgC6YKoGJgTAPGAAAEYAQGByiM4gIKQSADZI/csp6fB/+ssNZ/d//kv/30XV/2f+vpVuBAAADURIAXP/f34q05lqPIqAQIgLQqGYYODRxghhLGQg4ZSuH0bz92JBoJ3kn7AOHLev2GEdv6rtHWzV0fcj/6P/VVerrd7di6AM2rpa+ZdJaKQwGCMwU63//tSxHeDSWA5EgBrwsElB2JEDXhYDCECTNTlOcypAYzB5BLBwHJEAGqcwBAAjXmKLDgXFxwifsZg5nlV+9BDv0ccv5FH9DrrvBfFpTs/r+j/WtXgAAJoqZGvyh93AhtyDBDN6gwcQxzS8ZbMlEJkwZgijAfAFAQCgQAAGARmvqOMNAzq0wfRWwh7rfZdrWu//6/ZMdNXX7P+z+mpi6qIwAGkSFWbBoFWsiiBA4NQAiyYB4rhiIVJGFKIMCAtSQA4v+VgAhgGJtkCDjwPqeT2ye//+1LEiwEJODMhr2OsITYG42Qc+Fhm3VAq1WfzXt/9PR/5Pd7Rfp//b/Wq7wNX0hNLPGLEGeInJYGGQGabvbQpnoBImFOFwRA0AYBMUAHMBkBo4tweQMFMRAAt9Ib9gV+v9Xd///+v/9aX0/6It+n/9EFr8FjK1bHLWEMWRNpIMKcS82lJUTM7DnMJYFkwMQJzASAWEABxgBAUnD8PMYJAAKFzaxadti2UsXVznXvT/r9Oj/3//+j/0fvuphAAAABUiq9oNArBkfQQFBJwCUzATP/7UsSdAQlwNRsg58LBHobjMF14kFIMUagIwvw8hgCARgNDoAaqYNAWNkcj8IBaVhfqdvjPbEq/Z1d3/V+2z+nuT/do3f/66gAMkVp94VeJaKXwGCM4M7VjCMCDNYNGsyygVTBdBRDAUSIA9UZgBALmvgXMGAqqxPzLrw/T2/YzX2/+3/7/v/9u3+/IK/8y1CL4YZWpg46chjS5uKhhZirm3xTWZtIhJg3BrGCKA2YEQBgkBIYEYHRwdqWmCSAEXRZdDtoY1HcS6Pq2v+3rXL3X//tSxLEBSMQ3FAPrxIEqhuKUfXiQXe2ojZ/06/roX/q+5NFwAAAB3rvt/rn2oq4y6S9oXMBmpgGhzGIo58YToVRg8M5AASx1LjAIGz+LBAUErLozTBvt7vWzd0fsr/p/3pX0pc1/1il961+uYAADVVZN18RZklqX+McI2CT/eMLQJk221CTN+BnMLsHgeBMAwA44AaYAoJxr6rTmBOAgoK70ZrbQ9CgDGu0U7J61hmKd3R8W9Lr0WJt6LpJpRZyBGmRRI1FuLM9E1bVGoQgAAEb/+1LExoEI6DUZguvEgSYGozB8+JCfvopmiYwdCYZNKcjkYbY3JwwaYmguKmYfQDpgdgdmA0BQBAJhQIc3yI9jAuAnLvMNhqUkA5ij0kkVMTFya0KcNe8W/VGiqbbWlc5p+17FSyK/+pJFHgBjhel1dyBWbHF6YAABYAUtNAzTUri0JhCJhVxjOpgbjaGS1o4YrYoxgHgBmAOBMSAFjoApICsaiLmJgGgIKUu1KawnO3ck2sH9rqe6j+WS7roTV0qJimpy54XyDt1p2h7aarf+2//7UsTcAAm8NRIAa8LBI4ZjsZ91QOuvQDKaqdfmXiZCpkXGAypzlGD4C2af5p5lDAcmB6AiRAkjQB7HhQCsytk+C1LcojWukNF1uP+lF1v+wsvdhi6mvrMfZq3+169tdetjXf0oQAAHf3/uwpmhIXuKABipaaZAGHKPScYnR5ogi9mC8FsYMYHJgbAPDQGhgJhBGjnZGYAoEAEyUSRbJbzbJoawOkqOM2l6Wjp5SkKVsJOesgl4Kq04XsZpTQMikkbuotU9TAQvC7KUSNSVKJsD//tSxO6BDBg3FSDnwsGTBqHYHXhYPDX///DzBS+RgwCYYNmHnxjkqYKZCxmgfyGO+MkYSgTI4BcAQBTAFAAMAQHkyVpxhwCNO5sccmwhHZeib1G9KVUDCeMY9Rev8wOetzJRzNv72MrTzibp5Nh2NlMlah1zDhJJEpVVkAACEFBteFWfJaoJjDgDMBTglDC6B7NwNC0zkASzDNAIKwKAMAWMgGjALRgku2gQBZfcETdQHzNgs6SrZFznXVbHevexKrH2oWja9c9ZvvXl7v3c19j/+1LE6YELmDUTIuvEgTkGoyQc+FjfXzief/fhhh6YjN0dDEozcaDCxGZNwLEMzXxOzDcByMC0CswFAHDAEAaMBEHUxw5ajAfAfR4dOISsQjl/blTKjeTRvU5SAJddSllndNnkyD7KKEt9WYihNq3nX1l3s4vda2yqSvm+LIQAAABZzawM/K6kUQAHAJwxFMwMRRDI4nsMUEPIAgtmAGAcnal+YAgGxkNMLmAsAIw+GJXUzBzXrdV9hprqP/7vjcjd+KOZ92uz7//X/TtgatpBkv/7UsTyA828PQyt+eqBjQqhwb8JWNUY0IaQSdU0YdAQpxHo+mi0CmYPYJgcFAAgO1NzADBJNEuJYwMwCUVHLhiV0gZ0Q4Pc9d5cvMX61b6GjqGYrpoP/xZC0zBUXfve1VHrwzSbRaqxRKNRipOwy+r+a/UMM7UEaGk4YAoD5gXAxGE6MGbKl15mBiUgvg/bzcWCABBEB8anEBZgaADIptch+MU4efKuhV2pV/Gn1tecv2p26GbGMNJzFbS5bb6I6zpqu6OPUlhaKzuuowuwEAAE//tSxOcBCzA1EyPrxIGRiqHBrw1YsxJIlC3FLXed1cqRwWmYA4PBh7IPGEKCoUASqLQHTIczHFI6QPfinBMMdmS9ielG7s7uG+LUGUSCeut7VenXdbZb1venVZosrlAAAABMgA0fBx54XCU2L8hJjFIHz5VlTcoBzFUHygFU11bwYBR3dgoYEDrzlsE/ZW6yiW7H1/0UrZZp3VtVFGtQ7xq0uVXtZQt5Bz09N7uBp+XgADDH+e7C70UFGSwCGEl5nUAYXY8Juxcpmb2LuYaQgBj/+1LE5gEJzDcVYuvEgX+G4cB9eJAdgWmBAA0YCwBxgbgfnIW98YOIBYsAYv9+IuBBAXtfdW1FF76qk17pnpq4wJpeRdLtSAWe4qGDq0PAYJCkbk7w6s84cWqSamA8d5lrFSSpWKkl9zBtx4y47dAAAlRlqJcCh1iSYIIAgUoYiCYF4hRkbQkGJ+GIYAQP4FACaOuMDAMGnAbWNAsLfhE/YB91Yto71W3qpu/yKr6CpyraLtZWz73P73Np1NT2j1cL5hClukL/5//BLPkyUMgMKP/7UsTsgAugNw4PZ8wBMwYkNBx4lAzE4oYwwgRzdRK7M7YCMwhQhAEDoYB4AZKACTARG7mhoRBNIsOfIJ8QRbv+jKM1kh7FrzRJ3tIu5DRpVnHp9CrDi3lXdvxqKJ0We68nVzdon0te1//8YZ2rhT6LwBAhMCYGQwiRhTW4u5MqUSk7UM1bEyRoKADAYAk4kjvxoKkrABatC5y3mcsbcDrx5u8Y3ETUr3R9DMY1haKxZaNrIrQfTdUdI9LH+bGV1jxRp1Vwy995cXe8EKE8AKgw//tSxPWBCkgzG4FjpKHlkWFVvxVYvN6/tNDrEkiQIDAJQxUMwNxEjJ2h+MWcMYwMgJACAgobAJfI1uxvCYFpbsKor5CL769hmrqe3Wju/mJVrV7R3e9JY71DNf24qc/ehVd6qtDrKfoqgAADvv3/PjrYmEqZFvgx0HxGEoBCa6I14CXhMH0G0oBVDgF0KwMAybMghZEDapJ5aO8d0a6dHyiWStKGM78jWVJhSFiqc3cSgFlXY8mVG20TZGlb1CrmwxON/YzehK1r93HSAQ+9cBH/+1LE7YELEDUVIWvEgXWKocGvCVj/cRzltBc8zvjBRELM9KEkxtwzzA+CcMBkAswCAABoAgwFQDDYpArDgalIwNLb/Aio6jY7Gpttu1P0rUigEqq5Yvp66+ejmJMtVTN6w+Th9epzX0KIJVTK3puUToBABJ7gTurGQdMAJMKcMpRMEsUAzEJyDHDDsMEQKsEgDOGXaMBQCc2shZjA4ABS6dWXWQOga0VySRTzem1B19golzHFlNFi/db1hgdaizybha4Udaf62ckhIfqKqrz8JP/7UsTwgQysOQwPa8wBW4qiZa8JWIpcxfAAA91dxNIOgjsNNeV6POCBtOqR7IqhMLwgQMXep2IwIO0zzDgKfmmDbtd1HvTyl01V9HVq6qdCPtR9yY/uX+d+z/c+//38YYmrhZw6CAqc0W4wgRpTWWypMncUUwigPzAdA1MAoBwQALAwF84pEMjA8AVQWa7D1KYr9FLtVxl7S2cJlw5nxowDBHMfNv/12J2gFoR2yey+WdnCDjV5mrHcR+yl0n0Oyf7TFVilG7aklMqFXv0PcrAv//tSxPABDExXEQz4SsGFhuIgXPiQx38l7TP6u5IkCAzBlDIQzBFESMtSHwxpQxjAWAaMA0A5HlfIjAwNUc0MwFQAF2w1KQZQaRfjHXa+wUYhyUSC4BVbizezl1GlNqsFG9tpBGJeXsptEnE7V+pAlrkFuvVMMtkWyrcXyEnRuIHCYmvaEeCl9DBdBfFgZAwCNAmAAOTVYQcMBQANYZ/ZUdyL1JQconb6Z2cTrKBUVJdCFbyN1zmtpWXh2owlXtIrpHLRKmV3O5ligfcYOroamlj/+1LE7AAMZDUOQWvEgQ6GI2QsdJBJK4BD7aN8ocIyJioRgjiLmcpEqYvoa5gHBCGA2AiAgFCIAEwBQPDSjRhMAsAZcsNSmtmhaL1RmQWifPqPRimyz3nRXY9iKz2sgZRUVPF1dh8RdCkARXReutqMk5piMvwywYxV4+pgAAAA5+99pn9Z0oKWdAJxmZmB2HEZQzlRi/hRGCcC6FwAImj0FANzNoP2BgA7co7Wusz9fbjct9CaTvf1+XzrYVZ2R1yHfFUIZvuTaVqfZb7+xjak2P/7UsT2g88AbQgNeErJawZhwA14WJTQBDyXSFyR6XSXUiSV3GiwP2weAXqGMIJCQIIrpLkgWHM+/lgAoNoLojfgLudXq79J62pd+UcUSNFN9aL15Br7ELc/TeGb2oscr3euizvogAAGVWljPBL4pAzMh0AEEAQGBCFaZGyzZhqhBgoGgKgBoYJGBcCcx0jci58ATdzMjP1PPleN3bbt/JRdSN7IrJT5tUV1VHq+MhzbVl0z7mseBRAOllTaxJOcdfW0n5RJRIw2qtOpjbZAAABD//tSxOsDy9gzDARnxIGSBuGALXiQf9/6aGWdLFLggUoyrTA7DQMnRqAxgQkjAAADAwCy6W5gwCwxoUWwEAQ1uUTeB1R+lfjdl3LkEOJWOfbuAQqOWuCJ9CEiAAtmjxCLQyQ3Lhse47FGoT1HMDue0sqOp54hoKBuoAAAAmrg5I+L7MuShIgnAxQHx5FG4AEGEIBhgUF63nFQZMtuaCALdinqZkJ0eysvGfzDe5bCdO6xSLs7eKMI6whNVJZbfvlWOLrrB7cVUuibZT76t1aFBTj/+1LE5wEK5FUPDPhKwTuGYiBcdJACGprnUFu9PRJn4oQwBFE0cwMxTDsqgIkOzicQ8ED5pqS+xmEfM7rr/iWwp/d6mOXT9qckxaM1sYy1d27aFk0OPLsfeAO5Fef/MrUMs6VKWxAJRnWmB+GUZQTQxjShFGCsAuCQAnBaoCQIzEDSMAQI61H7pKdBD1MyzseYw5jJ86nAsoUWvcn/fChxH7Tb9ZHw2X7HnP4EGG/J7QRQT1314v/CxIPVIyUezHP2bn0PclTOU/5XfB2bKI5gBP/7UsTyAAz4zxEg+EWBnAqhoZ8JWNdUMkfGAmnKICwRmJgEHu5wG1wNGKoEjQII5qBmAQHGqnDhAgM3ik/gc9m5H0oNbvYtPZVctM0fvkXzHpZF1JajpdGolKSfWu7Zn1omtqzmpJKPX+D2eepq7qu39269utZ+5zYVLv2yzwW5yLOkneIgEjAJB9MZZEEwVQYTBYHkv12MkCAHNX6kHg3ahJ7AOF3L1DnG17rGzyVlHMS61TSKhwdKssA4FdCCaZMWUhH9hVaE7SGT3WFL3KX3//tSxOiBCwhXDwF0RYEchmLkHHSQpnxnSiC6ilMNP6w1L4EJMFxYNONEM6w2AAJrOljvIWmukWkwYtXk1+8fObkRAum49uNOHxI+014qfSWWM1hZtOGWjUUPh6rWhAgDtOU7bxYttNsvNo6Ti7a6jfsodLCZoCB5hIAhxCXxn0CAQDSABc7MSyxs6+w0HTQZPe6kP8+5vwxj6khkxJD7y73vMV/33ZNzavOa6Sm5nWgqRwhVvOLXsZcV/79Rv7M3Uzvv71vU07XP9vnbI7bdwXL/+1LE9oHOZFUIDPhqyacl4WAeiHnd3xFyFeXb1NEmwodBCHJnlJ5gAFMWUbfB0goBTm0/FhC30tvmXkzhVNQxBZDbK0nDZcPaCT8egrFpxxNVq1LDWsAM5V1oFXtMOqnwHFEXN0TKtv3qQ48qwAACCGcNycaAXeXaAQwZMuAKmQsBFYnFZyCQgcHdgYInFl1Lk7nq//ZDvtcT5n3huetPXruZzs3q2tUzlWejuT01d3m7+2h/lHKrMdZmaXGP930W/lwR/P/SGZZzLgczTLu1fP/7UsTmAcsIMwwA+6TBUgahlBx0kpAMrtogWKUWwIIPC8TkRXc2BnWIEZ8tY0tCxlIF1DjTw+Iox43eyRYRSQBYUaSsegSNWxIk6YxE9WeigntgqlMJJvRSkViJWpKWGgkGgNZv7WuasstMQU1FMy4xMDCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr+0KGCIiDUHRJQBGjNkIQApNzYKlqliYUInl+aaxGhVHmNhX5WMajrpL6P//tSxO2BzNCLCgT0aQlRBmGUHvCalaUqGVtHL+3MvopWM+hjKUsxpjfLUrTGUv/2v6a71lIaUrBmER4NSpagUAtMREs9EoiKytVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LE7gEMjDULAJuESVKGYVQdJRhVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7UsTRg8vlRvYE4EkAAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+
+def play_ready_ding():
+    """تشغيل نغمة تنبيه قصيرة تلقائياً فور جاهزية ورقة العمل."""
+    components.html(f"""
+        <audio autoplay>
+            <source src="data:audio/mp3;base64,{DING_SOUND_B64}" type="audio/mp3">
+        </audio>
+    """, height=0, width=0)
+
+# =========================================================================================
 # جلب مفتاح الـ API بمرونة تامة (سواء من الأسرار أو من متغيرات البيئة)
+# =========================================================================================
 api_key = None
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except Exception:
     api_key = os.getenv("GOOGLE_API_KEY")
+
+# إعدادات تكامل Canva الاختيارية (Canva Connect API - Autofill API)
+# يتطلب هذا التكامل حساب مطوّر على Canva وإنشاء تطبيق + قالب علامة تجارية (Brand Template)
+# ثم وضع القيم التالية في Secrets. بدون هذه الإعدادات، يعمل النظام تلقائياً بالتصميم
+# الاحترافي المدمج (الخيار الافتراضي) دون الحاجة لأي حساب Canva على الإطلاق.
+CANVA_API_TOKEN = None
+CANVA_BRAND_TEMPLATE_ID = None
+try:
+    CANVA_API_TOKEN = st.secrets.get("CANVA_API_TOKEN", None)
+    CANVA_BRAND_TEMPLATE_ID = st.secrets.get("CANVA_BRAND_TEMPLATE_ID", None)
+except Exception:
+    CANVA_API_TOKEN = os.getenv("CANVA_API_TOKEN")
+    CANVA_BRAND_TEMPLATE_ID = os.getenv("CANVA_BRAND_TEMPLATE_ID")
+
+CANVA_INTEGRATION_ENABLED = bool(CANVA_API_TOKEN and CANVA_BRAND_TEMPLATE_ID and REQUESTS_AVAILABLE)
 
 if not api_key:
     st.error("الرجاء ضبط مفتاح GOOGLE_API_KEY في إعدادات الأمان (Secrets) أو متغيرات البيئة لتشغيل النظام.")
@@ -163,7 +204,8 @@ else:
     grades = [
         "الصف الأول / Grade 1", "الصف الثاني / Grade 2", "الصف الثالث / Grade 3", 
         "الصف الرابع / Grade 4", "الصف الخامس / Grade 5", "الصف السادس / Grade 6", 
-        "الصف السابع / Grade 7", "الصف الثامن / Grade 8", "الصف التاسع / Grade 9"
+        "الصف السابع / Grade 7", "الصف الثامن / Grade 8", "الصف التاسع / Grade 9",
+        "الصف العاشر / Grade 10"
     ]
 
     educational_systems = [
@@ -289,52 +331,247 @@ else:
             return bio
         return None
 
+    # =====================================================================================
+    # === تصميم بصري احترافي لملف PowerPoint (بديل محلي لا يحتاج إنترنت أو حساب Canva) ===
+    # =====================================================================================
+
+    # لوحة ألوان احترافية متناسقة مع هوية النظام (كحلي داكن + ذهبي + أبيض + تركواز هادئ)
+    PPTX_THEME = {
+        "dark_navy": RGBColor(0x1A, 0x25, 0x2F),
+        "gold": RGBColor(0xF1, 0xC4, 0x0F),
+        "teal": RGBColor(0x17, 0xA2, 0x8B),
+        "white": RGBColor(0xFF, 0xFF, 0xFF),
+        "light_bg": RGBColor(0xF7, 0xF9, 0xFA),
+        "text_dark": RGBColor(0x2C, 0x3E, 0x50),
+    }
+
+    def _draw_icon(kind, size=200, fg=(241, 196, 15, 255), bg=(26, 37, 47, 255)):
+        """
+        يرسم أيقونة بسيطة (شرح صوري/بصري) باستخدام PIL بدون أي اتصال بالإنترنت،
+        وتُستخدم كصور توضيحية داخل شرائح PowerPoint (بديل ذاتي التوليد بدل صور خارجية).
+        """
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        pad = size * 0.12
+        d.ellipse([pad*0.4, pad*0.4, size-pad*0.4, size-pad*0.4], fill=bg)
+
+        if kind == "check":
+            d.line([(size*0.28, size*0.52), (size*0.44, size*0.68), (size*0.74, size*0.32)],
+                   fill=fg, width=int(size*0.09), joint="curve")
+        elif kind == "star":
+            import math
+            cx, cy, r_out, r_in = size/2, size/2, size*0.34, size*0.15
+            pts = []
+            for i in range(10):
+                ang = math.pi/2 + i * math.pi/5
+                r = r_out if i % 2 == 0 else r_in
+                pts.append((cx + r*math.cos(ang), cy - r*math.sin(ang)))
+            d.polygon(pts, fill=fg)
+        elif kind == "idea":
+            d.ellipse([size*0.32, size*0.20, size*0.68, size*0.56], fill=fg)
+            d.rectangle([size*0.42, size*0.55, size*0.58, size*0.68], fill=fg)
+            d.rectangle([size*0.40, size*0.70, size*0.60, size*0.76], fill=fg)
+        elif kind == "book":
+            d.rectangle([size*0.24, size*0.30, size*0.76, size*0.72], outline=fg, width=int(size*0.05))
+            d.line([(size*0.5, size*0.30), (size*0.5, size*0.72)], fill=fg, width=int(size*0.04))
+        elif kind == "target":
+            d.ellipse([size*0.24, size*0.24, size*0.76, size*0.76], outline=fg, width=int(size*0.05))
+            d.ellipse([size*0.38, size*0.38, size*0.62, size*0.62], fill=fg)
+        else:  # pencil (افتراضي)
+            d.polygon([(size*0.30, size*0.72), (size*0.62, size*0.30), (size*0.72, size*0.40), (size*0.40, size*0.82)], fill=fg)
+
+        bio = io.BytesIO()
+        img.save(bio, format="PNG")
+        bio.seek(0)
+        return bio
+
+    def _set_slide_background(slide, rgb):
+        fill = slide.background.fill
+        fill.solid()
+        fill.fore_color.rgb = rgb
+
+    def _add_footer(slide, prs, page_num):
+        left = Inches(0.3)
+        top = prs.slide_height - Inches(0.42)
+        width = prs.slide_width - Inches(0.6)
+        box = slide.shapes.add_textbox(left, top, width, Inches(0.3))
+        tf = box.text_frame
+        p = tf.paragraphs[0]
+        p.text = f"Edu Worksheet Adapt  •  {selected_subject.split(' / ')[0]}  •  {page_num}"
+        p.font.size = Pt(10)
+        p.font.color.rgb = PPTX_THEME["dark_navy"]
+        p.alignment = PP_ALIGN.RIGHT
+
     def create_ppt_file(text):
-        if PPTX_AVAILABLE:
-            prs = Presentation()
-            
-            # الشريحة الأولى: غلاف احترافي بتصميم أنيق
-            slide_layout = prs.slide_layouts[0]
-            slide = prs.slides.add_slide(slide_layout)
-            
-            # تلوين خلفية الغلاف بلون هادئ ومميز
-            background = slide.background
-            fill = background.fill
-            fill.solid()
-            fill.fore_color.rgb = RGBColor(245, 247, 250)
-            
-            title = slide.shapes.title
-            subtitle = slide.placeholders[1]
-            title.text = "Educational Worksheet Adaptation"
-            subtitle.text = f"النظام التربوي المطور - كلية تراسانطة\n{selected_grade} | {selected_subject}"
+        if not PPTX_AVAILABLE:
+            return None
 
-            # تنسيق الشرائح اللاحقة للمحطات التفاعلية
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            chunk_size = 5  
-            for i in range(0, len(lines), chunk_size):
-                chunk = lines[i:i+chunk_size]
-                bullet_slide_layout = prs.slide_layouts[1]
-                slide = prs.slides.add_slide(bullet_slide_layout)
-                
-                # تلوين خلفية الشرائح التفاعلية
-                bg_fill = slide.background.fill
-                bg_fill.solid()
-                bg_fill.fore_color.rgb = RGBColor(255, 255, 255)
-                
-                slide.shapes.title.text = f"محطة العرض التفاعلي / Interactive Station {(i//chunk_size)+1}"
-                
-                tf = slide.placeholders[1].text_frame
-                tf.text = "• " + chunk[0]
-                for line in chunk[1:]:
-                    p = tf.add_paragraph()
-                    p.text = "• " + line
-                    p.level = 0
+        prs = Presentation()
+        prs.slide_width = Inches(13.333)
+        prs.slide_height = Inches(7.5)
 
-            bio = io.BytesIO()
-            prs.save(bio)
-            bio.seek(0)
-            return bio
-        return None
+        icon_cycle = ["idea", "check", "star", "book", "target", "pencil"]
+
+        # ---------------- شريحة الغلاف الاحترافية ----------------
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # تخطيط فارغ للتحكم الكامل بالتصميم
+        _set_slide_background(slide, PPTX_THEME["dark_navy"])
+
+        # شريط ذهبي مائل أعلى الشريحة كلمسة تصميم Canva-style
+        band = slide.shapes.add_shape(MSO_SHAPE.PARALLELOGRAM, Inches(-1), Inches(-0.6), Inches(9), Inches(2.2))
+        band.fill.solid()
+        band.fill.fore_color.rgb = PPTX_THEME["gold"]
+        band.line.fill.background()
+        band.shadow.inherit = False
+
+        band2 = slide.shapes.add_shape(MSO_SHAPE.PARALLELOGRAM, Inches(9.5), Inches(5.2), Inches(6), Inches(2.6))
+        band2.fill.solid()
+        band2.fill.fore_color.rgb = PPTX_THEME["teal"]
+        band2.line.fill.background()
+        band2.shadow.inherit = False
+
+        # الشعار إن وجد
+        for filename in ["new_logo.png", "Educ_Worksheet_Adapt_Icon_(Square).png", "logo.png", "logo.jpg"]:
+            if os.path.exists(filename):
+                slide.shapes.add_picture(filename, Inches(0.6), Inches(0.5), height=Inches(1.1))
+                break
+
+        title_box = slide.shapes.add_textbox(Inches(0.8), Inches(2.7), Inches(11.7), Inches(1.5))
+        tf = title_box.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = "ورقة العمل المكيّفة  |  Adapted Worksheet"
+        p.font.size = Pt(40)
+        p.font.bold = True
+        p.font.color.rgb = PPTX_THEME["gold"]
+        p.alignment = PP_ALIGN.RIGHT
+
+        subtitle_box = slide.shapes.add_textbox(Inches(0.8), Inches(4.1), Inches(11.7), Inches(1.4))
+        tf2 = subtitle_box.text_frame
+        tf2.word_wrap = True
+        p2 = tf2.paragraphs[0]
+        p2.text = f"{selected_grade}   |   {selected_subject}"
+        p2.font.size = Pt(22)
+        p2.font.color.rgb = PPTX_THEME["white"]
+        p2.alignment = PP_ALIGN.RIGHT
+        p3 = tf2.add_paragraph()
+        p3.text = f"{selected_condition.split(' / ')[0]}   |   {selected_level.split('(')[0]}"
+        p3.font.size = Pt(16)
+        p3.font.color.rgb = RGBColor(0xE0, 0xE0, 0xE0)
+        p3.alignment = PP_ALIGN.RIGHT
+
+        # ---------------- شرائح المحتوى ----------------
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        chunk_size = 5
+        page_num = 1
+        for i in range(0, len(lines), chunk_size):
+            chunk = lines[i:i + chunk_size]
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            _set_slide_background(slide, PPTX_THEME["light_bg"])
+
+            # شريط علوي ملوّن بعنوان الشريحة
+            header = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, Inches(1.15))
+            header.fill.solid()
+            header.fill.fore_color.rgb = PPTX_THEME["dark_navy"]
+            header.line.fill.background()
+            header.shadow.inherit = False
+
+            accent = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(1.15), prs.slide_width, Inches(0.08))
+            accent.fill.solid()
+            accent.fill.fore_color.rgb = PPTX_THEME["gold"]
+            accent.line.fill.background()
+            accent.shadow.inherit = False
+
+            header_tf = slide.shapes.add_textbox(Inches(0.6), Inches(0.22), Inches(10.5), Inches(0.8)).text_frame
+            hp = header_tf.paragraphs[0]
+            hp.text = f"محطة العرض التفاعلي {page_num} / Interactive Station {page_num}"
+            hp.font.size = Pt(24)
+            hp.font.bold = True
+            hp.font.color.rgb = PPTX_THEME["white"]
+            hp.alignment = PP_ALIGN.RIGHT
+
+            # أيقونة/صورة توضيحية دوّارة أعلى يسار الشريحة (شرح بصري لكل محطة)
+            icon_kind = icon_cycle[(page_num - 1) % len(icon_cycle)]
+            icon_bio = _draw_icon(icon_kind, size=220,
+                                   fg=(0x1A, 0x25, 0x2F, 255), bg=(0xF1, 0xC4, 0x0F, 255))
+            slide.shapes.add_picture(icon_bio, Inches(11.3), Inches(0.15), height=Inches(0.9))
+
+            # صندوق المحتوى النصي مع تعداد نقطي ملوّن
+            body_box = slide.shapes.add_textbox(Inches(0.7), Inches(1.5), Inches(11.9), Inches(5.5))
+            body_tf = body_box.text_frame
+            body_tf.word_wrap = True
+
+            for idx, line in enumerate(chunk):
+                p = body_tf.paragraphs[0] if idx == 0 else body_tf.add_paragraph()
+                p.text = f"◆  {line}"
+                p.font.size = Pt(19)
+                p.font.color.rgb = PPTX_THEME["text_dark"]
+                p.alignment = PP_ALIGN.RIGHT
+                p.space_after = Pt(14)
+
+            _add_footer(slide, prs, page_num)
+            page_num += 1
+
+        # ---------------- شريحة ختامية ----------------
+        closing = prs.slides.add_slide(prs.slide_layouts[6])
+        _set_slide_background(closing, PPTX_THEME["dark_navy"])
+        cbox = closing.shapes.add_textbox(Inches(1), Inches(3.1), Inches(11.3), Inches(1.3))
+        ctf = cbox.text_frame
+        cp = ctf.paragraphs[0]
+        cp.text = "شكراً لاستخدامك Edu Worksheet Adapt"
+        cp.font.size = Pt(30)
+        cp.font.bold = True
+        cp.font.color.rgb = PPTX_THEME["gold"]
+        cp.alignment = PP_ALIGN.CENTER
+
+        bio = io.BytesIO()
+        prs.save(bio)
+        bio.seek(0)
+        return bio
+
+    # =====================================================================================
+    # === تكامل اختياري حقيقي مع Canva عبر Canva Connect API (Autofill API) ===
+    # يتطلب: CANVA_API_TOKEN و CANVA_BRAND_TEMPLATE_ID في Secrets (من حساب Canva Developer
+    # الخاص بكم بعد إنشاء تطبيق Canva وربط قالب علامة تجارية Brand Template يحتوي حقل نص
+    # باسم "content". بدون هذين المفتاحين يبقى النظام يعمل تلقائياً بالتصميم المدمج أعلاه.
+    # =====================================================================================
+    def create_canva_design(text, title_text):
+        if not CANVA_INTEGRATION_ENABLED:
+            return None, "لم يتم ضبط بيانات اعتماد Canva (CANVA_API_TOKEN / CANVA_BRAND_TEMPLATE_ID)."
+
+        headers = {
+            "Authorization": f"Bearer {CANVA_API_TOKEN}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "brand_template_id": CANVA_BRAND_TEMPLATE_ID,
+            "data": {
+                "content": {"type": "text", "text": text[:2000]},
+                "title": {"type": "text", "text": title_text},
+            },
+        }
+        try:
+            create_resp = requests.post(
+                "https://api.canva.com/rest/v1/autofills", headers=headers, json=payload, timeout=30
+            )
+            create_resp.raise_for_status()
+            job_id = create_resp.json()["job"]["id"]
+
+            for _ in range(20):
+                time.sleep(2)
+                status_resp = requests.get(
+                    f"https://api.canva.com/rest/v1/autofills/{job_id}", headers=headers, timeout=30
+                )
+                status_resp.raise_for_status()
+                job = status_resp.json()["job"]
+                if job["status"] == "success":
+                    design_url = job["result"]["design"]["url"]
+                    return design_url, None
+                if job["status"] == "failed":
+                    return None, f"فشل إنشاء التصميم عبر Canva: {job.get('error')}"
+
+            return None, "استغرق إنشاء تصميم Canva وقتاً أطول من المتوقع، يرجى المحاولة لاحقاً."
+        except Exception as e:
+            return None, f"تعذّر الاتصال بواجهة Canva: {e}"
 
     def create_pdf_file(text):
         if PDF_AVAILABLE:
@@ -362,6 +599,8 @@ else:
     # تهيئة الذاكرة المؤقتة لمنع اختفاء النص عند التحميل
     if "adapted_text" not in st.session_state:
         st.session_state.adapted_text = None
+    if "just_generated" not in st.session_state:
+        st.session_state.just_generated = False
 
     if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀 / Start AI Adaptation"):
         if not extracted_content.strip():
@@ -425,6 +664,7 @@ else:
 
             if adapted_text:
                 st.session_state.adapted_text = adapted_text
+                st.session_state.just_generated = True
                 st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
             else:
                 st.error("عذراً، تعذّر الاتصال بخدمة الذكاء الاصطناعي حالياً. يرجى المحاولة لاحقاً، أو التأكد من صلاحية مفتاح GOOGLE_API_KEY.")
@@ -433,6 +673,12 @@ else:
 
     # عرض النتيجة وأزرار التحميل طالما أنها مخزنة في الذاكرة (لا تختفي عند التحميل)
     if st.session_state.adapted_text:
+
+        # تشغيل نغمة "طنّة" صغيرة تلقائياً مرة واحدة فقط فور جاهزية الورقة
+        if st.session_state.just_generated:
+            play_ready_ding()
+            st.session_state.just_generated = False
+
         st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
         st.markdown(st.session_state.adapted_text)
         
@@ -457,13 +703,29 @@ else:
             ppt_data = create_ppt_file(st.session_state.adapted_text)
             if ppt_data and PPTX_AVAILABLE:
                 st.download_button(
-                    label="تحميل PowerPoint (.pptx)",
+                    label="تحميل PowerPoint (.pptx) 🎨",
                     data=ppt_data,
                     file_name="Interactive_Presentation.pptx",
                     mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
                 )
             else:
                 st.info("تصدير PowerPoint غير متوفر حالياً.")
+
+            # زر إضافي اختياري: إنشاء نسخة عبر Canva الفعلي إن توفرت بيانات الاعتماد
+            if CANVA_INTEGRATION_ENABLED:
+                if st.button("🎨 إنشاء نسخة مصمّمة عبر Canva"):
+                    with st.spinner("جاري إنشاء التصميم عبر Canva..."):
+                        design_url, err = create_canva_design(
+                            st.session_state.adapted_text,
+                            f"{selected_grade} - {selected_subject}"
+                        )
+                    if design_url:
+                        st.success("تم إنشاء التصميم بنجاح عبر Canva!")
+                        st.markdown(f"[فتح التصميم في Canva]({design_url})")
+                    else:
+                        st.warning(err)
+            else:
+                st.caption("ℹ️ لتفعيل التصميم عبر حساب Canva فعلياً، أضف CANVA_API_TOKEN و CANVA_BRAND_TEMPLATE_ID في Secrets.")
             
         with col3:
             pdf_data = create_pdf_file(st.session_state.adapted_text)
