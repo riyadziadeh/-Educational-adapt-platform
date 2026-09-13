@@ -1338,8 +1338,28 @@ else:
 
         st.markdown("---")
         st.markdown(f"""
-            <div class="animated-box" style="background-color: rgba(241, 196, 15, 0.15); border: 2px solid {GOLD}; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0px 4px 15px rgba(241, 196, 15, 0.2);">
-                <h3 style="margin: 0; font-weight: 900; line-height: 1.6; color: {NAVY_DARK};">شكراً لاستخدامك برنامج Edu Worksheet Adapt</h3>
-                <h4 style="margin: 8px 0 0 0; font-weight: 900; line-height: 1.6; color: {NAVY_DARK};">Thank you for using Edu Worksheet Adapt</h4>
+            <div class="animated-box" style="
+                background: linear-gradient(135deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
+                border: none;
+                padding: 34px 22px;
+                border-radius: 22px;
+                text-align: center;
+                margin-top: 24px;
+                box-shadow: 0px 12px 32px rgba(16,27,45,0.35);
+            ">
+                <div style="font-size: 42px; line-height: 1; margin-bottom: 10px;">🎓✨</div>
+                <h3 style="margin: 0; font-weight: 900; line-height: 1.6; color: {GOLD}; font-size: 24px;">
+                    شكراً لاستخدامك Edu Worksheet Adapt
+                </h3>
+                <p style="margin: 10px 0 0 0; font-weight: 700; color: {WHITE}; font-size: 16px; line-height: 1.8;">
+                    نحو تعليم أكثر شمولاً يليق بكل طالب 💙
+                </p>
+                <div style="height: 1px; background: rgba(255,255,255,0.28); margin: 20px auto; width: 55%;"></div>
+                <h4 style="margin: 0; font-weight: 800; color: {WHITE}; font-size: 17px;">
+                    Thank you for using Edu Worksheet Adapt
+                </h4>
+                <p style="margin: 6px 0 0 0; color: rgba(255,255,255,0.75); font-size: 13px; font-weight: 500;">
+                    Toward more inclusive education for every learner
+                </p>
             </div>
         """, unsafe_allow_html=True)
