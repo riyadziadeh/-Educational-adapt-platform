@@ -1075,11 +1075,35 @@ else:
         يحاول أولاً ضمان دعم العربية تلقائياً (تثبيت مكتبات + تنزيل خط) قبل التوليد.
         - إن نجح الإصلاح التلقائي أو كان الدعم متوفراً أصلاً: PDF عربي كامل وصحيح بصرياً.
         - إن فشل الإصلاح التلقائي: PDF مبسّط بالإنجليزية/الأرقام فقط مع تنبيه صريح بالسبب.
+        - كل سطر يُعالَج بشكل مستقل: لو سطر معين تسبب بخطأ داخلي في fpdf2 (مشكلة معروفة
+          مع بعض حروف التشكيل العربية غير المعرَّفة في الخط)، نحاول بدائل أبسط لذلك السطر
+          تحديداً بدل أن ينهار الملف بالكامل ويخسر كل المحتوى السابق الذي نجح.
         """
         shaping_ready, font_path, reshape_func, display_func, setup_logs = _ensure_arabic_pdf_support()
 
         def _shape(line):
             return display_func(reshape_func(line))
+
+        def _write_line_safely(pdf_obj, raw_line, is_title=False):
+            """
+            يحاول كتابة السطر بثلاث محاولات متدرجة: (1) نص عربي مُشكَّل بالكامل،
+            (2) نص عربي خام بدون تشكيل (حروف منفصلة لكن مقروءة)، (3) نص مبسّط بالحروف
+            اللاتينية فقط كحل أخير. يعيد True لو نجحت أي محاولة، وإلا False.
+            """
+            height = 10 if is_title else 8
+            align = "C" if is_title else "R"
+            attempts = [
+                lambda: pdf_obj.multi_cell(0, height, txt=_shape(raw_line), align=align),
+                lambda: pdf_obj.multi_cell(0, height, txt=raw_line, align=align),
+                lambda: pdf_obj.multi_cell(0, height, txt=raw_line.encode('latin-1', 'ignore').decode('latin-1') or "-", align=align),
+            ]
+            for attempt in attempts:
+                try:
+                    attempt()
+                    return True
+                except Exception:
+                    continue
+            return False
 
         pdf = FPDF()
         pdf.add_page()
@@ -1088,21 +1112,23 @@ else:
             pdf.add_font("ArabicFont", "", font_path, uni=True)
             pdf.set_font("ArabicFont", size=13)
 
-            title_line = _shape("ورقة العمل المكيّفة - نظام Edu Worksheet Adapt")
-            pdf.multi_cell(0, 10, txt=title_line, align="C")
+            _write_line_safely(pdf, "ورقة العمل المكيّفة - نظام Edu Worksheet Adapt", is_title=True)
             pdf.ln(4)
 
+            skipped_lines = 0
             for line in text.split('\n'):
                 if line.strip():
-                    display_line = _shape(line.strip())
-                    pdf.multi_cell(0, 8, txt=display_line, align="R")
+                    ok = _write_line_safely(pdf, line.strip(), is_title=False)
+                    if not ok:
+                        skipped_lines += 1
                 else:
                     pdf.ln(4)
 
             pdf_output = pdf.output()
             if isinstance(pdf_output, str):
                 pdf_output = pdf_output.encode('latin-1')
-            # لا نعرض سجلات الإصلاح التلقائي كتحذير للمستخدم طالما النتيجة النهائية ناجحة تماماً
+            if skipped_lines > 0:
+                return io.BytesIO(pdf_output), f"⚠️ تم إنشاء PDF بنجاح، لكن {skipped_lines} سطر تعذّر عرضه بسبب مشكلة توافق في خط العرض العربي وتم تخطيه."
             return io.BytesIO(pdf_output), None
 
         else:
