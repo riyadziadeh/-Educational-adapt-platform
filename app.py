@@ -161,6 +161,44 @@ st.markdown(f"""
         margin: 6px 0 2px 0;
     }}
 
+    /* ===== تحويل أزرار المواد الدراسية إلى دوائر أنيقة (٤ بجانب بعض) ===== */
+    .circle-btn-marker + div[data-testid="stButton"] {{
+        display: flex;
+        justify-content: center;
+    }}
+    .circle-btn-marker + div[data-testid="stButton"] > button {{
+        width: 84px !important;
+        height: 84px !important;
+        min-height: 84px !important;
+        border-radius: 50% !important;
+        background: linear-gradient(160deg, {WHITE} 0%, {NAVY_LIGHT} 100%) !important;
+        border: 3px solid {BLUE_ACCENT}55 !important;
+        font-size: 30px !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0px 4px 10px rgba(16,27,45,0.12);
+    }}
+    .circle-btn-marker + div[data-testid="stButton"] > button:hover {{
+        border: 3px solid {GOLD} !important;
+        transform: scale(1.06);
+    }}
+    .circle-selected + div[data-testid="stButton"] > button {{
+        border: 3px solid {GOLD} !important;
+        background: linear-gradient(160deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%) !important;
+    }}
+    .circle-caption {{
+        text-align: center;
+        font-weight: 800;
+        font-size: 12.5px;
+        color: {NAVY_DARK};
+        margin: 6px auto 16px auto;
+        line-height: 1.35;
+        max-width: 110px;
+    }}
+
     .selection-summary {{
         background-color: {NAVY_DARK};
         color: {GOLD};
@@ -373,8 +411,38 @@ else:
 
         return st.session_state[state_key]
 
-    # ---------------- شبكة اختيار المادة الدراسية (تشبه شبكة الأيقونات في الصورة المرفقة) ----------------
-    subject_idx = render_icon_grid(
+    # =====================================================================================
+    # === شبكة دوائر أنيقة خاصة بالمواد الدراسية (٤ دوائر بجانب بعضها في كل صف) ===
+    # =====================================================================================
+    def render_subject_circles(title, items, state_key, columns_per_row=4, default_index=0):
+        """
+        يعرض المواد الدراسية على شكل دوائر (أيقونة داخل الدائرة + اسم المادة أسفلها)،
+        ويحفظ الاختيار في st.session_state. items: قائمة من tuples (emoji, label)
+        """
+        if state_key not in st.session_state:
+            st.session_state[state_key] = default_index
+
+        st.markdown(f'<div class="grid-title">{title}</div>', unsafe_allow_html=True)
+
+        for row_start in range(0, len(items), columns_per_row):
+            row_items = items[row_start: row_start + columns_per_row]
+            cols = st.columns(len(row_items))
+            for col, (idx_in_row, (emoji, label)) in zip(cols, enumerate(row_items)):
+                real_idx = row_start + idx_in_row
+                is_selected = st.session_state[state_key] == real_idx
+                with col:
+                    marker_class = "circle-btn-marker circle-selected" if is_selected else "circle-btn-marker"
+                    st.markdown(f'<span class="{marker_class}"></span>', unsafe_allow_html=True)
+                    if st.button(emoji, key=f"{state_key}_circle_{real_idx}"):
+                        st.session_state[state_key] = real_idx
+                        st.rerun()
+                    check_mark = "✅ " if is_selected else ""
+                    st.markdown(f'<div class="circle-caption">{check_mark}{label}</div>', unsafe_allow_html=True)
+
+        return st.session_state[state_key]
+
+    # ---------------- شبكة دوائر اختيار المادة الدراسية (٤ مواد بجانب بعض) ----------------
+    subject_idx = render_subject_circles(
         "📚 اختر المادة الدراسية / Select Subject",
         subjects_with_icons,
         "subject_idx",
