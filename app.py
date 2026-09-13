@@ -161,25 +161,50 @@ st.markdown(f"""
         margin: 6px 0 2px 0;
     }}
 
-    /* ===== تحويل أزرار المواد الدراسية إلى دوائر أنيقة (٤ بجانب بعض) ===== */
+    /* إجبار أعمدة ستريمليت على البقاء بجانب بعضها أفقياً حتى على شاشات الجوال الضيقة */
+    div[data-testid="stHorizontalBlock"] {{
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        align-items: flex-start !important;
+    }}
+    div[data-testid="stColumn"] {{
+        min-width: 0 !important;
+    }}
+
+    /* ===== تحويل أزرار المواد الدراسية إلى دوائر حقيقية (٤ بجانب بعض) ===== */
     .circle-btn-marker + div[data-testid="stButton"] {{
-        display: flex;
-        justify-content: center;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        width: 100% !important;
+        flex: none !important;
     }}
     .circle-btn-marker + div[data-testid="stButton"] > button {{
-        width: 84px !important;
-        height: 84px !important;
-        min-height: 84px !important;
+        box-sizing: border-box !important;
+        width: 72px !important;
+        height: 72px !important;
+        min-width: 72px !important;
+        min-height: 72px !important;
+        max-width: 72px !important;
+        max-height: 72px !important;
+        aspect-ratio: 1 / 1 !important;
+        flex: none !important;
+        align-self: center !important;
         border-radius: 50% !important;
         background: linear-gradient(160deg, {WHITE} 0%, {NAVY_LIGHT} 100%) !important;
         border: 3px solid {BLUE_ACCENT}55 !important;
-        font-size: 30px !important;
+        font-size: 24px !important;
+        line-height: 1 !important;
         padding: 0 !important;
         margin: 0 auto !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         box-shadow: 0px 4px 10px rgba(16,27,45,0.12);
+    }}
+    .circle-btn-marker + div[data-testid="stButton"] > button p {{
+        margin: 0 !important;
+        line-height: 1 !important;
     }}
     .circle-btn-marker + div[data-testid="stButton"] > button:hover {{
         border: 3px solid {GOLD} !important;
@@ -192,11 +217,11 @@ st.markdown(f"""
     .circle-caption {{
         text-align: center;
         font-weight: 800;
-        font-size: 12.5px;
+        font-size: 11.5px;
         color: {NAVY_DARK};
-        margin: 6px auto 16px auto;
-        line-height: 1.35;
-        max-width: 110px;
+        margin: 6px auto 14px auto;
+        line-height: 1.3;
+        max-width: 88px;
     }}
 
     .selection-summary {{
