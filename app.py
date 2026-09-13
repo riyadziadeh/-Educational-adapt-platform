@@ -22,6 +22,13 @@ try:
 except ImportError:
     PPTX_AVAILABLE = False
 
+# محاولة استيراد مكتبة FPDF لتوليد ملفات الـ PDF بأمان
+try:
+    from fpdf import FPDF
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
 # إعداد صفحة ستريمليت مع العنوان الرسمي الأنيق والأيقونة
 st.set_page_config(
     page_title="نظام تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation Platform", 
@@ -308,10 +315,27 @@ else:
             return bio
         return None
 
-    def create_txt_file(text):
-        bio = io.BytesIO(text.encode('utf-8'))
-        bio.seek(0)
-        return bio
+    def create_pdf_file(text):
+        if PDF_AVAILABLE:
+            pdf = FPDF()
+            pdf.add_page()
+            # استخدام خط قياسي آمن
+            pdf.set_font("Arial", size=11)
+            
+            # عنوان رأس الصفحة
+            pdf.cell(0, 10, txt="Adapted Educational Worksheet - Special Ed System", ln=True, align="C")
+            pdf.ln(5)
+            
+            # معالجة السطور لتجنب أخطاء ترميز الحروف الخاصة في FPDF القياسي
+            for line in text.split('\n'):
+                clean_line = line.encode('latin-1', 'ignore').decode('latin-1')
+                if clean_line.strip():
+                    pdf.multi_cell(0, 8, txt=clean_line)
+                else:
+                    pdf.ln(4)
+                    
+            return io.BytesIO(pdf.output(dest='S'))
+        return None
 
     # تهيئة الذاكرة المؤقتة لمنع اختفاء النص عند التحميل
     if "adapted_text" not in st.session_state:
@@ -420,13 +444,16 @@ else:
                 st.info("تصدير PowerPoint غير متوفر حالياً.")
             
         with col3:
-            txt_data = create_txt_file(st.session_state.adapted_text)
-            st.download_button(
-                label="تحميل نصي (.txt)",
-                data=txt_data,
-                file_name="Adapted_Worksheet.txt",
-                mime="text/plain"
-            )
+            pdf_data = create_pdf_file(st.session_state.adapted_text)
+            if pdf_data and PDF_AVAILABLE:
+                st.download_button(
+                    label="تحميل PDF (.pdf)",
+                    data=pdf_data,
+                    file_name="Adapted_Worksheet.pdf",
+                    mime="application/pdf"
+                )
+            else:
+                st.info("تصدير PDF غير متوفر حالياً.")
 
         st.markdown("---")
         st.markdown("""
