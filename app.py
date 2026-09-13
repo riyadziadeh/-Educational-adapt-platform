@@ -29,8 +29,15 @@ st.set_page_config(
     layout="centered"
 )
 
-# تخصيص CSS متطور يدعم الوضع الفاتح والداكن لضمان وضوح النصوص تماماً + إخفاء أيقونة GitHub فقط
+# تخصيص CSS متطور + وسوم الميتا (Meta Tags) لإخفاء شعار ستريملايت وضبط معاينة الرابط باحترافية
 st.markdown("""
+    <head>
+        <meta property="title" content="نظام تكييف أوراق العمل بالذكاء الاصطناعي">
+        <meta property="description" content="منصة متخصصة لتكييف أوراق العمل للتربية الخاصة ودمج الطلبة وفق المناهج التعليمية.">
+        <meta property="og:title" content="نظام تكييف أوراق العمل بالذكاء الاصطناعي | Educational Worksheet Adaptation">
+        <meta property="og:description" content="منصة ذكية لمساعدة المعلمين وأولياء الأمور في تكييف المناهج للطلبة ذوي الاحتياجات الخاصة.">
+        <meta property="og:type" content="website">
+    </head>
     <style>
     /* إخفاء أيقونة GitHub وحدها من الشريط العلوي */
     .stAppToolbar [data-testid="stToolbarActions"] {
