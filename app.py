@@ -166,8 +166,18 @@ st.markdown(f"""
         transform: translateY(-2px);
     }}
 
-    /* ===== زر "ابدأ تكييف ورقة العمل" الرئيسي: نص أزرق كحلي واضح (وليس أسود تقريباً)، كبير، وبدون أي قطع للنص ===== */
+    /* ===== زر "ابدأ تكييف ورقة العمل" الرئيسي: عرض كامل من الطرف للطرف (وليس مربعاً صغيراً) ===== */
+    div[class*="st-key-start-ai-button"] {{
+        width: 100% !important;
+        display: block !important;
+    }}
+    div[class*="st-key-start-ai-button"] div[data-testid="stButton"] {{
+        width: 100% !important;
+        display: block !important;
+    }}
     div[class*="st-key-start-ai-button"] div[data-testid="stButton"] > button {{
+        width: 100% !important;
+        display: block !important;
         background-color: {WHITE} !important;
         color: {BLUE_ACCENT} !important;
         font-weight: 900 !important;
