@@ -1,8 +1,11 @@
 import os
 import io
+import sys
 import time
 import base64
 import random
+import subprocess
+import tempfile
 import streamlit as st
 import streamlit.components.v1 as components
 from google import genai
@@ -993,16 +996,66 @@ else:
         "Tajawal-Regular.ttf",
     ]
 
-    def _find_arabic_font():
+    # رابط خط عربي عام (مفتوح المصدر) من مستودع Google Fonts الرسمي، يُستخدم للتنزيل
+    # التلقائي وقت التشغيل فقط إذا لم يوجد أي خط عربي محلي في مجلد المشروع.
+    _FALLBACK_ARABIC_FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/amiri/Amiri-Regular.ttf"
+
+    def _find_local_arabic_font():
         for fname in ARABIC_FONT_CANDIDATES:
             if os.path.exists(fname):
                 return fname
         return None
 
-    def _shape_arabic_line(line):
-        """يعيد تشكيل الحروف العربية المتصلة ويرتبها بصرياً من اليمين لليسار لعرضها بشكل صحيح في PDF."""
-        reshaped = arabic_reshaper.reshape(line)
-        return get_display(reshaped)
+    @st.cache_resource(show_spinner=False)
+    def _ensure_arabic_pdf_support():
+        """
+        يضمن توفر (1) مكتبتي تشكيل النص العربي و(2) خط عربي صالح، تلقائياً وقت التشغيل،
+        حتى لو نسي المستخدم إضافتهما إلى requirements.txt أو رفع ملف خط. يُنفَّذ مرة واحدة
+        فقط طوال عمر التطبيق بفضل st.cache_resource (لا يتكرر التنزيل/التثبيت في كل rerun).
+        يعيد: (shaping_ready: bool, font_path: str|None, reshape_func, display_func, logs: list[str])
+        """
+        logs = []
+        shaping_ready = ARABIC_SHAPING_AVAILABLE
+        reshape_func = None
+        display_func = None
+
+        if shaping_ready:
+            reshape_func = arabic_reshaper.reshape
+            display_func = get_display
+        else:
+            try:
+                subprocess.check_call([
+                    sys.executable, "-m", "pip", "install", "--quiet",
+                    "arabic-reshaper", "python-bidi"
+                ])
+                import arabic_reshaper as _ar_runtime
+                from bidi.algorithm import get_display as _gd_runtime
+                reshape_func = _ar_runtime.reshape
+                display_func = _gd_runtime
+                shaping_ready = True
+                logs.append("تم تثبيت مكتبات دعم العربية (arabic-reshaper, python-bidi) تلقائياً وقت التشغيل.")
+            except Exception as e:
+                logs.append(f"تعذّر تثبيت مكتبات دعم العربية تلقائياً: {e}")
+
+        font_path = _find_local_arabic_font()
+        if not font_path:
+            try:
+                cache_path = os.path.join(tempfile.gettempdir(), "AutoArabicFont.ttf")
+                if not os.path.exists(cache_path):
+                    if REQUESTS_AVAILABLE:
+                        resp = requests.get(_FALLBACK_ARABIC_FONT_URL, timeout=25)
+                        resp.raise_for_status()
+                        with open(cache_path, "wb") as f:
+                            f.write(resp.content)
+                    else:
+                        raise RuntimeError("مكتبة requests غير متوفرة لتنزيل الخط تلقائياً.")
+                if os.path.exists(cache_path) and os.path.getsize(cache_path) > 0:
+                    font_path = cache_path
+                    logs.append("تم تنزيل خط عربي (Amiri) تلقائياً من الإنترنت لدعم PDF بالعربية.")
+            except Exception as e:
+                logs.append(f"تعذّر تنزيل خط عربي تلقائياً: {e}")
+
+        return shaping_ready, font_path, reshape_func, display_func, logs
 
     def create_pdf_file(text):
         """
@@ -1018,26 +1071,30 @@ else:
 
     def _create_pdf_file_impl(text):
         """
-        يعيد tuple: (BytesIO أو None, رسالة تحذير أو None).
-        - إن توفر خط عربي + مكتبات التشكيل: يُنتج PDF عربياً كاملاً وصحيحاً بصرياً.
-        - إن لم يتوفرا: يُنتج PDF مبسّطاً بالإنجليزية/الأرقام فقط مع تنبيه صريح للمستخدم،
-          بدلاً من إسقاط النص العربي بصمت كما كان يحدث سابقاً.
+        يعيد tuple: (BytesIO أو None, رسالة تحذير/معلومة أو None).
+        يحاول أولاً ضمان دعم العربية تلقائياً (تثبيت مكتبات + تنزيل خط) قبل التوليد.
+        - إن نجح الإصلاح التلقائي أو كان الدعم متوفراً أصلاً: PDF عربي كامل وصحيح بصرياً.
+        - إن فشل الإصلاح التلقائي: PDF مبسّط بالإنجليزية/الأرقام فقط مع تنبيه صريح بالسبب.
         """
-        font_path = _find_arabic_font()
+        shaping_ready, font_path, reshape_func, display_func, setup_logs = _ensure_arabic_pdf_support()
+
+        def _shape(line):
+            return display_func(reshape_func(line))
+
         pdf = FPDF()
         pdf.add_page()
 
-        if font_path and ARABIC_SHAPING_AVAILABLE:
+        if font_path and shaping_ready:
             pdf.add_font("ArabicFont", "", font_path, uni=True)
             pdf.set_font("ArabicFont", size=13)
 
-            title_line = _shape_arabic_line("ورقة العمل المكيّفة - نظام Edu Worksheet Adapt")
+            title_line = _shape("ورقة العمل المكيّفة - نظام Edu Worksheet Adapt")
             pdf.multi_cell(0, 10, txt=title_line, align="C")
             pdf.ln(4)
 
             for line in text.split('\n'):
                 if line.strip():
-                    display_line = _shape_arabic_line(line.strip())
+                    display_line = _shape(line.strip())
                     pdf.multi_cell(0, 8, txt=display_line, align="R")
                 else:
                     pdf.ln(4)
@@ -1045,19 +1102,20 @@ else:
             pdf_output = pdf.output()
             if isinstance(pdf_output, str):
                 pdf_output = pdf_output.encode('latin-1')
+            # لا نعرض سجلات الإصلاح التلقائي كتحذير للمستخدم طالما النتيجة النهائية ناجحة تماماً
             return io.BytesIO(pdf_output), None
 
         else:
-            # مسار احتياطي: لا يوجد خط عربي متاح على الخادم — ننبّه المستخدم بوضوح
             missing_parts = []
             if not font_path:
-                missing_parts.append("ملف خط عربي (مثال: Amiri-Regular.ttf) في مجلد المشروع")
-            if not ARABIC_SHAPING_AVAILABLE:
-                missing_parts.append("مكتبتي arabic_reshaper و python-bidi (أضفهما إلى requirements.txt)")
+                missing_parts.append("خط عربي (حاولنا تنزيله تلقائياً من الإنترنت ولم ننجح)")
+            if not shaping_ready:
+                missing_parts.append("مكتبات تشكيل النص العربي (حاولنا تثبيتها تلقائياً ولم ننجح)")
             warning = (
-                "⚠️ تعذّر إنتاج PDF بالعربية بشكل كامل لأن الخادم ينقصه: "
+                "⚠️ تعذّر إنتاج PDF بالعربية رغم محاولة الإصلاح التلقائي، بسبب: "
                 + " و".join(missing_parts)
-                + ". تم إنشاء نسخة PDF مبسّطة بالحروف اللاتينية والأرقام فقط، وقد لا تحتوي على النص العربي."
+                + ". التفاصيل: " + " | ".join(setup_logs) if setup_logs else
+                "⚠️ تعذّر إنتاج PDF بالعربية رغم محاولة الإصلاح التلقائي."
             )
             pdf.set_font("Arial", size=11)
             pdf.multi_cell(0, 10, txt="Adapted Educational Worksheet - Special Ed System", align="C")
@@ -1097,9 +1155,7 @@ else:
         if not extracted_content.strip():
             extracted_content = f"ورقة عمل عامة لمبحث {selected_subject} للصف {selected_grade} وفق النظام {selected_system}."
 
-        mode_desc = "توليد ورقة عمل بديلة مع بنك أسئلة تقييمي" if generate_alternative else "تكييف وتطوير ورقة العمل الأصلية"
-
-        with st.spinner(f"جاري معالجة ورقة العمل ({mode_desc}) وتحليلها عبر الذكاء الاصطناعي... يرجى الانتظار قليلاً..."):
+        with st.spinner(" "):
 
             trimmed_content = extracted_content[:MAX_INPUT_CHARS] if len(extracted_content) > MAX_INPUT_CHARS else extracted_content
 
