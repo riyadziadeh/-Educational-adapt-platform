@@ -1,8 +1,10 @@
 streamlit
 google-genai
+pypdf
 python-docx
 python-pptx
-fpdf
-pypdf
-gTTS
-
+Pillow
+fpdf2
+arabic-reshaper
+python-bidi
+requests
