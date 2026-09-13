@@ -1349,7 +1349,7 @@ else:
             ">
                 <div style="font-size: 42px; line-height: 1; margin-bottom: 10px;">🎓✨</div>
                 <h3 style="margin: 0; font-weight: 900; line-height: 1.6; color: {GOLD}; font-size: 24px;">
-                    شكراً لاستخدامك Edu Worksheet Adapt
+                    شكراً لاستخدامك<br>Edu Worksheet Adapt
                 </h3>
                 <p style="margin: 10px 0 0 0; font-weight: 700; color: {WHITE}; font-size: 16px; line-height: 1.8;">
                     نحو تعليم أكثر شمولاً يليق بكل طالب 💙
