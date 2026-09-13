@@ -166,6 +166,24 @@ st.markdown(f"""
         transform: translateY(-2px);
     }}
 
+    /* ===== زر "ابدأ تكييف ورقة العمل" الرئيسي: نص كحلي غامق كبير وواضح داخل مستطيل أبيض بارز ===== */
+    div[class*="st-key-start-ai-button"] div[data-testid="stButton"] > button {{
+        background-color: {WHITE} !important;
+        color: {NAVY_DARK} !important;
+        font-weight: 900 !important;
+        font-size: 22px !important;
+        line-height: 1.5 !important;
+        min-height: 90px !important;
+        padding: 18px 16px !important;
+        border-radius: 18px !important;
+        border: 3px solid {NAVY_DARK} !important;
+        box-shadow: 0px 6px 16px rgba(16,27,45,0.18);
+    }}
+    div[class*="st-key-start-ai-button"] div[data-testid="stButton"] > button:hover {{
+        border: 3px solid {GOLD} !important;
+        color: {NAVY_DARK} !important;
+    }}
+
     .grid-title {{
         font-weight: 900;
         font-size: 19px;
@@ -1045,7 +1063,14 @@ else:
     if "generated_for_text" not in st.session_state:
         st.session_state.generated_for_text = None
 
-    if st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀 / Start AI Adaptation"):
+    try:
+        start_btn_container = st.container(key="start-ai-button")
+    except TypeError:
+        start_btn_container = st.container()
+    with start_btn_container:
+        start_clicked = st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀 / Start AI Adaptation")
+
+    if start_clicked:
         if not extracted_content.strip():
             extracted_content = f"ورقة عمل عامة لمبحث {selected_subject} للصف {selected_grade} وفق النظام {selected_system}."
 
