@@ -1081,7 +1081,7 @@ else:
     except TypeError:
         start_btn_container = st.container()
     with start_btn_container:
-        start_clicked = st.button("ابدأ تكييف ورقة العمل بالذكاء الاصطناعي 🚀 / Start AI Adaptation")
+        start_clicked = st.button("🚀 Start")
 
     if start_clicked:
         if not extracted_content.strip():
