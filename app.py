@@ -173,29 +173,32 @@ st.markdown(f"""
         min-width: 0 !important;
     }}
 
-    /* ===== تحويل أزرار المواد الدراسية إلى دوائر حقيقية (٤ بجانب بعض) ===== */
-    .circle-btn-marker + div[data-testid="stButton"] {{
+    /* ===== تحويل أزرار المواد الدراسية إلى دوائر حقيقية بحجم مناسب للأيقونة (٤ بجانب بعض) =====
+       يتم الاستهداف عبر كلاس الحاوية (st-key-circlebtn-...) بدل الاعتماد على ترتيب العناصر،
+       لضمان عمل التصميم بشكل موثوق بغض النظر عن التغييرات الداخلية بهيكل DOM في ستريمليت. */
+    div[class*="st-key-circlebtn-"] {{
         display: flex !important;
         justify-content: center !important;
-        align-items: center !important;
-        width: 100% !important;
-        flex: none !important;
     }}
-    .circle-btn-marker + div[data-testid="stButton"] > button {{
+    div[class*="st-key-circlebtn-"] div[data-testid="stButton"] {{
+        display: flex !important;
+        justify-content: center !important;
+        width: 100% !important;
+    }}
+    div[class*="st-key-circlebtn-"] button {{
         box-sizing: border-box !important;
-        width: 72px !important;
-        height: 72px !important;
-        min-width: 72px !important;
-        min-height: 72px !important;
-        max-width: 72px !important;
-        max-height: 72px !important;
+        width: 68px !important;
+        height: 68px !important;
+        min-width: 68px !important;
+        min-height: 68px !important;
+        max-width: 68px !important;
+        max-height: 68px !important;
         aspect-ratio: 1 / 1 !important;
         flex: none !important;
-        align-self: center !important;
         border-radius: 50% !important;
         background: linear-gradient(160deg, {WHITE} 0%, {NAVY_LIGHT} 100%) !important;
         border: 3px solid {BLUE_ACCENT}55 !important;
-        font-size: 24px !important;
+        font-size: 22px !important;
         line-height: 1 !important;
         padding: 0 !important;
         margin: 0 auto !important;
@@ -204,15 +207,15 @@ st.markdown(f"""
         justify-content: center !important;
         box-shadow: 0px 4px 10px rgba(16,27,45,0.12);
     }}
-    .circle-btn-marker + div[data-testid="stButton"] > button p {{
+    div[class*="st-key-circlebtn-"] button p {{
         margin: 0 !important;
         line-height: 1 !important;
     }}
-    .circle-btn-marker + div[data-testid="stButton"] > button:hover {{
+    div[class*="st-key-circlebtn-"] button:hover {{
         border: 3px solid {GOLD} !important;
-        transform: scale(1.06);
+        transform: scale(1.08);
     }}
-    .circle-selected + div[data-testid="stButton"] > button {{
+    div[class*="st-key-circlebtn-"][class*="-on"] button {{
         border: 3px solid {GOLD} !important;
         background: linear-gradient(160deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%) !important;
     }}
@@ -221,9 +224,9 @@ st.markdown(f"""
         font-weight: 800;
         font-size: 11.5px;
         color: {NAVY_DARK};
-        margin: 6px auto 14px auto;
+        margin: 4px auto 14px auto;
         line-height: 1.3;
-        max-width: 88px;
+        max-width: 92px;
     }}
 
     .selection-summary {{
@@ -353,12 +356,24 @@ else:
         ("🔤", "اللغة الإنجليزية / English"),
         ("🇫🇷", "اللغة الفرنسية / French"),
         ("🕌", "التربية الإسلامية / Islamic Ed."),
+        ("✝️", "التربية المسيحية / Christian Ed."),
         ("🌍", "الدراسات الاجتماعية / Social St."),
+        ("🗺️", "الجغرافيا / Geography"),
+        ("📜", "التاريخ / History"),
         ("⚛️", "الفيزياء / Physics"),
         ("🧪", "الكيمياء / Chemistry"),
         ("🧬", "الأحياء / Biology"),
         ("💻", "الحاسوب / Computer Sci."),
-        ("🎨", "الفنون والمهني / Arts & Voc."),
+        ("🎨", "الفنون / Arts"),
+        ("🎵", "الموسيقى / Music"),
+        ("🎭", "المسرح والدراما / Drama"),
+        ("⚽", "التربية الرياضية / PE"),
+        ("💼", "الأعمال وريادة الأعمال / Business"),
+        ("🏛️", "التربية الوطنية والمدنية / Civics"),
+        ("🧠", "علم النفس / Psychology"),
+        ("👥", "علم الاجتماع / Sociology"),
+        ("🛠️", "التصميم والتكنولوجيا / Design & Tech"),
+        ("🍳", "الاقتصاد المنزلي / Home Economics"),
     ]
     subjects = [s[1] for s in subjects_with_icons]
 
@@ -458,11 +473,16 @@ else:
                 real_idx = row_start + idx_in_row
                 is_selected = st.session_state[state_key] == real_idx
                 with col:
-                    marker_class = "circle-btn-marker circle-selected" if is_selected else "circle-btn-marker"
-                    st.markdown(f'<span class="{marker_class}"></span>', unsafe_allow_html=True)
-                    if st.button(emoji, key=f"{state_key}_circle_{real_idx}"):
-                        st.session_state[state_key] = real_idx
-                        st.rerun()
+                    on_off = "on" if is_selected else "off"
+                    container_key = f"circlebtn-{state_key}-{real_idx}-{on_off}"
+                    try:
+                        circle_container = st.container(key=container_key)
+                    except TypeError:
+                        circle_container = st.container()
+                    with circle_container:
+                        if st.button(emoji, key=f"{state_key}_circle_{real_idx}"):
+                            st.session_state[state_key] = real_idx
+                            st.rerun()
                     check_mark = "✅ " if is_selected else ""
                     st.markdown(f'<div class="circle-caption">{check_mark}{label}</div>', unsafe_allow_html=True)
 
