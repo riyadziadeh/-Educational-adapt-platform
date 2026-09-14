@@ -534,6 +534,57 @@ st.markdown(f"""
         margin: 12px 0 20px 0;
         box-shadow: 0px 8px 20px rgba(16,27,45,0.18);
     }}
+
+    /* ===== لمسات إضافية واضحة لطابع 2026: كرات ضوئية متوهجة خلف المحتوى + عنوان
+    متدرج اللون + حركة ظهور تدريجي للصفحة كاملة، حتى يبين التحديث فوراً من أول ثانية ===== */
+    .stApp::before, .stApp::after {{
+        content: "";
+        position: fixed;
+        border-radius: 50%;
+        filter: blur(70px);
+        z-index: 0;
+        pointer-events: none;
+        opacity: 0.35;
+    }}
+    .stApp::before {{
+        width: 280px;
+        height: 280px;
+        top: -80px;
+        right: -60px;
+        background: radial-gradient(circle, {GOLD} 0%, transparent 70%);
+    }}
+    .stApp::after {{
+        width: 320px;
+        height: 320px;
+        bottom: -100px;
+        left: -80px;
+        background: radial-gradient(circle, {BLUE_ACCENT} 0%, transparent 70%);
+    }}
+    .stApp > div {{
+        position: relative;
+        z-index: 1;
+    }}
+
+    @keyframes pageFadeIn {{
+        0% {{ opacity: 0; transform: translateY(10px); }}
+        100% {{ opacity: 1; transform: translateY(0); }}
+    }}
+    .main .block-container {{
+        animation: pageFadeIn 0.5s ease-out;
+    }}
+
+    /* عنوان النظام الرئيسي بأسلوب متدرج اللون (Gradient Text) بدل اللون الفلات */
+    h1 {{
+        background: linear-gradient(90deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 60%, {GOLD} 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: 0.5px;
+    }}
+    h2 {{
+        color: {BLUE_ACCENT} !important;
+        letter-spacing: 0.3px;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -1173,26 +1224,38 @@ else:
 
     _ai_images_state = {"available": True}
 
+    # نماذج الصور الحالية الفعّالة (نموذج Imagen القديم توقف رسمياً من جوجل بتاريخ ١٧/٨/٢٠٢٦)
+    IMAGE_MODELS_TO_TRY = ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-2.5-flash-image"]
+
     def _generate_ai_illustration(prompt_text):
         if not _ai_images_state["available"]:
             return None
-        try:
-            response = client.models.generate_images(
-                model="imagen-4.0-generate-001",
-                prompt=(
-                    "رسمة تعليمية بسيطة بأسلوب Flat Design نظيف وواضح، بدون أي كتابة أو حروف "
-                    "أو أرقام داخل الصورة إطلاقاً، بألوان هادئة تتناسق مع الذهبي (#F1C40F) "
-                    f"والكحلي الداكن (#101B2D)، توضّح بصرياً الفكرة التالية: {prompt_text}"
-                ),
-                config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="1:1"),
-            )
-            img_bytes = response.generated_images[0].image.image_bytes
-            bio = io.BytesIO(img_bytes)
-            bio.seek(0)
-            return bio
-        except Exception:
-            _ai_images_state["available"] = False
-            return None
+
+        full_prompt = (
+            "رسمة تعليمية بسيطة بأسلوب Flat Design نظيف وواضح، بدون أي كتابة أو حروف "
+            "أو أرقام داخل الصورة إطلاقاً، بألوان هادئة تتناسق مع الذهبي (#F1C40F) "
+            f"والكحلي الداكن (#101B2D)، توضّح بصرياً الفكرة التالية: {prompt_text}"
+        )
+
+        for model_name in IMAGE_MODELS_TO_TRY:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=full_prompt,
+                )
+                for part in response.candidates[0].content.parts:
+                    if getattr(part, "inline_data", None) is not None:
+                        img_bytes = part.inline_data.data
+                        bio = io.BytesIO(img_bytes)
+                        bio.seek(0)
+                        return bio
+            except Exception:
+                continue
+
+        # لو فشلت كل النماذج الحالية، نعطّل محاولات توليد الصور لبقية الجلسة
+        # (توفيراً للوقت) وترجع الشرائح للاعتماد على الأيقونات المرسومة بديلاً
+        _ai_images_state["available"] = False
+        return None
 
     def _add_footer(slide, prs, page_num):
         left = Inches(0.3)
@@ -1886,7 +1949,8 @@ else:
                 """
 
             adapted_text_raw = None
-            models_to_try = ["gemini-3.5-flash-lite", "gemini-2.5-flash"]
+            # ترتيب النماذج من الأحدث/الأرخص إلى الأقدم كخيار احتياطي أخير فقط
+            models_to_try = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash"]
             last_error = None
             for model_name in models_to_try:
                 try:
