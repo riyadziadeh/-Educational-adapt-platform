@@ -2,10 +2,13 @@ import os
 import io
 import sys
 import time
+import json
 import base64
 import random
+import sqlite3
 import subprocess
 import tempfile
+from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
 from google import genai
@@ -54,6 +57,131 @@ try:
     REQUESTS_AVAILABLE = True
 except ImportError:
     REQUESTS_AVAILABLE = False
+
+# محاولة استيراد openpyxl لتصدير نموذج التصحيح التلقائي كملف Excel
+try:
+    import openpyxl
+    from openpyxl.styles import Font, Alignment
+    OPENPYXL_AVAILABLE = True
+except ImportError:
+    OPENPYXL_AVAILABLE = False
+
+# =========================================================================================
+# === إضافة جديدة (١): طبقة قاعدة بيانات محلية خفيفة (SQLite) لحفظ "ذاكرة الطالب" ===
+# تُستخدم لربط كل ورقة عمل تم تكييفها بطالب محدد، بحيث يقدر المعلم يرجع لسجل الطالب
+# لاحقاً بدل ما يبدأ من الصفر في كل مرة، ولإصدار تقرير متابعة (الإضافة رقم ٤).
+# =========================================================================================
+DB_PATH = "edu_adapt_data.db"
+
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            teacher_name TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            grade TEXT,
+            system TEXT,
+            category TEXT,
+            condition_text TEXT,
+            created_at TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS worksheet_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            teacher_name TEXT NOT NULL,
+            student_id INTEGER,
+            student_name TEXT,
+            subject TEXT,
+            grade TEXT,
+            adaptation_level TEXT,
+            mode TEXT,
+            adapted_text TEXT,
+            answer_key_json TEXT,
+            created_at TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
+
+def get_students(teacher_name):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM students WHERE teacher_name = ? ORDER BY full_name", (teacher_name,))
+    rows = cur.fetchall()
+    conn.close()
+    return [
+        {
+            "id": r["id"], "full_name": r["full_name"], "grade": r["grade"],
+            "system": r["system"], "category": r["category"], "condition": r["condition_text"]
+        }
+        for r in rows
+    ]
+
+
+def save_student(teacher_name, full_name, grade, system, category, condition_text):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO students (teacher_name, full_name, grade, system, category, condition_text, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (teacher_name, full_name, grade, system, category, condition_text, datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_student(student_id, grade, system, category, condition_text):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE students SET grade=?, system=?, category=?, condition_text=? WHERE id=?",
+        (grade, system, category, condition_text, student_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_worksheet_history(teacher_name, student_id, student_name, subject, grade, level, mode,
+                            adapted_text, answer_key_json):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO worksheet_history
+           (teacher_name, student_id, student_name, subject, grade, adaptation_level, mode,
+            adapted_text, answer_key_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (teacher_name, student_id, student_name, subject, grade, level, mode,
+         adapted_text, answer_key_json, datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_student_history(teacher_name, student_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM worksheet_history WHERE teacher_name = ? AND student_id = ? ORDER BY created_at DESC",
+        (teacher_name, student_id)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
 
 # إعداد صفحة ستريمليت مع العنوان الرسمي الأنيق والأيقونة
 st.set_page_config(
@@ -293,6 +421,15 @@ st.markdown(f"""
         box-shadow: 0px 4px 14px rgba(16,27,45,0.08);
     }}
 
+    /* ===== صندوق قسم إدارة الطلاب ===== */
+    div[class*="st-key-student-mgmt-card"] {{
+        background-color: {WHITE} !important;
+        border-radius: 18px !important;
+        padding: 14px !important;
+        margin-bottom: 16px !important;
+        box-shadow: 0px 4px 12px rgba(16,27,45,0.06);
+    }}
+
     .selection-summary {{
         background-color: {NAVY_DARK};
         color: {GOLD};
@@ -304,6 +441,28 @@ st.markdown(f"""
     }}
     </style>
 """, unsafe_allow_html=True)
+
+# =========================================================================================
+# === إضافة جديدة (٥): تسجيل دخول مبسّط للمعلم عبر الشريط الجانبي، لفصل بيانات كل
+# معلم (طلابه وسجل أوراقه) عن غيره في نفس قاعدة البيانات المشتركة — يناسب استخدام
+# التطبيق من عدة معلمين في نفس المدرسة دون الحاجة لنظام حسابات معقّد. ===
+# =========================================================================================
+with st.sidebar:
+    st.markdown("### 👩‍🏫 تسجيل دخول المعلم / Teacher Login")
+    if "teacher_name" not in st.session_state:
+        st.session_state.teacher_name = ""
+    teacher_input = st.text_input(
+        "اسم المعلم / Teacher Name:",
+        value=st.session_state.teacher_name,
+        key="teacher_name_input",
+        help="أدخل اسمك لحفظ طلابك وسجل أوراقهم بشكل منفصل عن باقي المعلمين."
+    )
+    if teacher_input.strip():
+        st.session_state.teacher_name = teacher_input.strip()
+    if st.session_state.teacher_name:
+        st.success(f"مرحباً {st.session_state.teacher_name} 👋")
+    else:
+        st.info("الرجاء إدخال اسمك لتفعيل ذاكرة الطلاب وتقارير المتابعة.")
 
 # عرض الشعار الجديد (new_logo.png) بجودة عالية وبحجم مناسب في منتصف الصفحة تماماً
 col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
@@ -485,6 +644,29 @@ else:
         ]
     }
 
+    # =====================================================================================
+    # === إضافة جديدة (٣): بنك إرشادات تكييف معتمدة لكل فئة حالة خاصة، تُحقن ضمن الطلب
+    # المرسل للذكاء الاصطناعي كأساس ومرجع أسلوبي، بدل الاعتماد فقط على وصف الحالة النصي.
+    # هذا يرفع جودة واتساق التكييف بدل أن يبدأ النموذج من الصفر في كل مرة. ===
+    # =====================================================================================
+    ADAPTATION_TEMPLATE_HINTS = {
+        "1. الإعاقات الحسية والجسدية / Sensory & Physical Disabilities":
+            "استخدم أوصافاً لفظية غنية بدل الاعتماد على الشكل البصري فقط، كبّر حجم النص المقترح، "
+            "بسّط أي جداول إلى نقاط متسلسلة واضحة، وأضف وصفاً نصياً بديلاً لأي عنصر بصري.",
+        "2. الاضطرابات النمائية وصعوبات التعلم / Developmental Disorders & Learning Difficulties":
+            "قسّم كل مهمة إلى خطوات قصيرة مرقّمة، استخدم جملاً قصيرة ومباشرة، كرّر التعليمة الواحدة "
+            "بصياغتين مختلفتين عند الحاجة، وأضف إشارة إلى رمز بصري توضيحي بجانب كل تعليمة.",
+        "3. الإعاقات الذهنية والسلوكية / Intellectual & Behavioral Disabilities":
+            "بسّط المفردات إلى الحد الأدنى الممكن، اربط كل سؤال بمثال حياتي مألوف للطالب، وقلّل عدد "
+            "الأسئلة مقابل زيادة المساحة البصرية والوقت المتاح بين الفقرات.",
+        "4. الإعاقات والحالات الصحية المزمنة / Chronic Health Conditions":
+            "صمّم الورقة بحيث يمكن إنجازها على أكثر من جلسة قصيرة، أضف ملاحظة تشجيعية في ختامها، "
+            "وتجنّب أي صياغة تعطي إحساساً بضغط زمني.",
+        "5. فئة الموهبة والتفوق / Giftedness & Talent":
+            "أضف تحدياً معرفياً إثرائياً اختيارياً بعد كل سؤال أساسي، اربط المحتوى بتطبيق واقعي أكثر "
+            "تقدماً، وشجّع التفكير الناقد عبر أسئلة مفتوحة النهاية.",
+    }
+
     adaptation_levels_with_icons = [
         ("⚖️", "تكييف متوازن وشامل\nBalanced Adaptation"),
         ("🧩", "تبسيط وتسهيل شديد للمفاهيم\nDeep Simplification"),
@@ -610,14 +792,109 @@ else:
 
     st.markdown("---")
 
+    # =====================================================================================
+    # === إضافة جديدة (١ + ٥): قسم إدارة الطلاب — اختيار طالب موجود أو إضافة طالب جديد،
+    # مربوط باسم المعلم المسجّل في الشريط الجانبي. عند اختيار طالب موجود، تُستخدم بياناته
+    # كقيم افتراضية لحقول الصف/النظام/الفئة/الحالة أدناه بدل البدء من الصفر في كل مرة. ===
+    # =====================================================================================
+    current_teacher = (st.session_state.get("teacher_name") or "معلم_عام").strip()
+
+    try:
+        student_mgmt_card = st.container(key="student-mgmt-card")
+    except TypeError:
+        student_mgmt_card = st.container()
+
+    with student_mgmt_card:
+        st.markdown('<div class="grid-title">👨‍🎓 إدارة الطالب / Student Management</div>', unsafe_allow_html=True)
+
+        students_list = get_students(current_teacher)
+        student_names_options = ["➕ بدون ربط بطالب / No Student Link", "✏️ طالب جديد / New Student"] + [
+            f"{s['full_name']} ({s['grade']})" for s in students_list
+        ]
+        student_choice = st.selectbox("الطالب / Student:", student_names_options, key="student_choice")
+
+        selected_student_record = None
+        new_student_name = ""
+        if student_choice == student_names_options[1]:
+            new_student_name = st.text_input("اسم الطالب الجديد / New Student Name:", key="new_student_name_input")
+        elif student_choice not in (student_names_options[0], student_names_options[1]):
+            _sel_idx = student_names_options.index(student_choice) - 2
+            selected_student_record = students_list[_sel_idx]
+
+    def _idx_or_default(options_list, value, default=0):
+        try:
+            return options_list.index(value)
+        except (ValueError, TypeError):
+            return default
+
     # ---------------- بقية الحقول عبر قوائم منسدلة بنفس الهوية اللونية (كحلي/ذهبي/أبيض) ----------------
-    selected_grade = st.selectbox("اختر الصف الدراسي / Select Grade:", grades)
-    selected_system = st.selectbox("اختر النظام التعليمي / Select Educational System:", educational_systems)
+    grade_default_idx = _idx_or_default(grades, selected_student_record["grade"]) if selected_student_record else 0
+    selected_grade = st.selectbox("اختر الصف الدراسي / Select Grade:", grades, index=grade_default_idx)
+
+    system_default_idx = _idx_or_default(educational_systems, selected_student_record["system"]) if selected_student_record else 0
+    selected_system = st.selectbox("اختر النظام التعليمي / Select Educational System:", educational_systems, index=system_default_idx)
+
     selected_language = st.selectbox("اختر لغة التكييف والمخرجات / Select Output Language / Langue:", languages)
     selected_gov = st.selectbox("اختر محافظة المدرسة في الأردن / Select Governorate in Jordan:", jordan_governorates)
 
-    selected_category = st.selectbox("اختر فئة الحالة الخاصة / Select Special Condition Category:", list(special_conditions_categories.keys()))
-    selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة / Select Specific Condition:", special_conditions_categories[selected_category])
+    category_options = list(special_conditions_categories.keys())
+    category_default_idx = _idx_or_default(category_options, selected_student_record["category"]) if selected_student_record else 0
+    selected_category = st.selectbox("اختر فئة الحالة الخاصة / Select Special Condition Category:", category_options, index=category_default_idx)
+
+    condition_options = special_conditions_categories[selected_category]
+    condition_default_idx = 0
+    if selected_student_record and selected_student_record.get("category") == selected_category:
+        condition_default_idx = _idx_or_default(condition_options, selected_student_record["condition"])
+    selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة / Select Specific Condition:", condition_options, index=condition_default_idx)
+
+    # عرض شفاف لإرشاد التكييف المعتمد لهذه الفئة (إضافة ٣) حتى يطّلع عليه المعلم مباشرة
+    st.caption(f"🗂️ إرشاد تكييف معتمد لهذه الفئة: {ADAPTATION_TEMPLATE_HINTS.get(selected_category, '')}")
+
+    # ---------------- أزرار حفظ / تحديث بيانات الطالب (تُستخدم بعد اختيار كل الحقول أعلاه) ----------------
+    if student_choice == student_names_options[1] and new_student_name.strip():
+        if st.button("💾 حفظ الطالب الجديد / Save New Student", key="save_new_student_btn"):
+            save_student(current_teacher, new_student_name.strip(), selected_grade, selected_system,
+                         selected_category, selected_condition)
+            st.success("تم حفظ بيانات الطالب بنجاح.")
+            st.rerun()
+    elif selected_student_record:
+        if st.button("💾 تحديث بيانات الطالب / Update Student Info", key="update_student_btn"):
+            update_student(selected_student_record["id"], selected_grade, selected_system,
+                            selected_category, selected_condition)
+            st.success("تم تحديث بيانات الطالب.")
+
+    # =====================================================================================
+    # === إضافة جديدة (٤): تقرير متابعة الطالب — يعرض سجل كل أوراق العمل السابقة
+    # المرتبطة بطالب معيّن، مع إمكانية تصدير تقرير PDF من صفحة واحدة لمشاركته مع
+    # قسم الإرشاد الطلابي أو ولي الأمر. ===
+    # =====================================================================================
+    with st.expander("📊 تقرير متابعة الطالب / Student Progress Report"):
+        if students_list:
+            report_student_choice = st.selectbox(
+                "اختر الطالب لعرض سجله / Select Student:",
+                [s["full_name"] for s in students_list],
+                key="report_student_select"
+            )
+            _chosen_report_student = next(s for s in students_list if s["full_name"] == report_student_choice)
+            history_rows = get_student_history(current_teacher, _chosen_report_student["id"])
+            if history_rows:
+                st.dataframe(
+                    [
+                        {
+                            "التاريخ": r["created_at"][:16].replace("T", " "),
+                            "المادة": r["subject"],
+                            "الصف": r["grade"],
+                            "مستوى التكييف": r["adaptation_level"],
+                            "الوضع": r["mode"],
+                        }
+                        for r in history_rows
+                    ],
+                    use_container_width=True
+                )
+            else:
+                st.info("لا يوجد سجل أوراق سابق لهذا الطالب بعد.")
+        else:
+            st.info("لم تتم إضافة أي طلاب بعد. أضف طالباً من قسم إدارة الطالب أعلاه.")
 
     uploaded_file = st.file_uploader("قم بتمرير أو رفع ملف ورقة العمل (PDF أو Word أو TXT) / Upload Worksheet File:", type=["pdf", "docx", "txt"])
 
@@ -1181,17 +1458,188 @@ else:
             return io.BytesIO(pdf_output), warning
 
     # =====================================================================================
+    # === إضافة جديدة (٦): تصدير نموذج تصحيح تلقائي كملف Excel — يحتوي على السؤال
+    # والإجابة النموذجية المستخرجة من نفس استجابة الذكاء الاصطناعي، لتوفير وقت التصحيح. ===
+    # =====================================================================================
+    def create_answer_key_excel(answer_key_list):
+        if not OPENPYXL_AVAILABLE or not answer_key_list:
+            return None
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "نموذج التصحيح"
+        try:
+            ws.sheet_view.rightToLeft = True
+        except Exception:
+            pass
+        ws["A1"] = "#"
+        ws["B1"] = "السؤال"
+        ws["C1"] = "الإجابة الصحيحة"
+        for cell_ref in ["A1", "B1", "C1"]:
+            ws[cell_ref].font = Font(bold=True)
+            ws[cell_ref].alignment = Alignment(horizontal="center")
+        for i, item in enumerate(answer_key_list, start=1):
+            ws.cell(row=i + 1, column=1, value=i)
+            c_q = ws.cell(row=i + 1, column=2, value=str(item.get("q", "")))
+            c_q.alignment = Alignment(horizontal="right", wrap_text=True)
+            c_a = ws.cell(row=i + 1, column=3, value=str(item.get("a", "")))
+            c_a.alignment = Alignment(horizontal="right", wrap_text=True)
+        ws.column_dimensions["A"].width = 6
+        ws.column_dimensions["B"].width = 60
+        ws.column_dimensions["C"].width = 40
+        bio = io.BytesIO()
+        wb.save(bio)
+        bio.seek(0)
+        return bio
+
+    # =====================================================================================
+    # === إضافة جديدة (٧): بطاقات PECS بصرية (صورة + كلمة) لأهم مفردات ورقة العمل،
+    # تُستخدم كدعم تواصل بصري إضافي حقيقي لطلاب اضطراب طيف التوحد وصعوبات التواصل،
+    # بالاعتماد على نفس بنية توليد الصور (_generate_ai_illustration) المستخدمة أصلاً
+    # في تصميم شرائح PowerPoint. ===
+    # =====================================================================================
+    def create_pecs_cards_pdf(vocab_words):
+        if not PDF_AVAILABLE or not vocab_words:
+            return None, "لا توجد مفردات كافية أو مكتبة PDF غير متوفرة لإنشاء البطاقات."
+
+        shaping_ready, font_path, reshape_func, display_func, _logs = _ensure_arabic_pdf_support()
+
+        pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.set_auto_page_break(auto=False)
+        if font_path and shaping_ready:
+            pdf.add_font("ArabicFont", "", font_path, uni=True)
+
+        card_w, card_h = 85, 85
+        margin_x, margin_y = 15, 15
+        gap = 10
+        positions = [
+            (margin_x, margin_y), (margin_x + card_w + gap, margin_y),
+            (margin_x, margin_y + card_h + gap), (margin_x + card_w + gap, margin_y + card_h + gap),
+        ]
+
+        words_to_use = vocab_words[:6]
+        for i, word in enumerate(words_to_use):
+            pos_idx = i % 4
+            if pos_idx == 0:
+                pdf.add_page()
+            x, y = positions[pos_idx]
+            pdf.rect(x, y, card_w, card_h)
+
+            img_bio = _generate_ai_illustration(word)
+            if img_bio:
+                tmp_img_path = os.path.join(tempfile.gettempdir(), f"pecs_{i}.png")
+                with open(tmp_img_path, "wb") as f:
+                    f.write(img_bio.getvalue())
+                try:
+                    pdf.image(tmp_img_path, x=x + 5, y=y + 5, w=card_w - 10, h=card_h - 25)
+                except Exception:
+                    pass
+
+            pdf.set_xy(x, y + card_h - 18)
+            if font_path and shaping_ready:
+                pdf.set_font("ArabicFont", size=13)
+                label = display_func(reshape_func(word))
+            else:
+                pdf.set_font("Arial", size=11)
+                label = word.encode('latin-1', 'ignore').decode('latin-1')
+            try:
+                pdf.multi_cell(card_w, 8, txt=label, align="C")
+            except Exception:
+                pass
+
+        pdf_output = pdf.output()
+        if isinstance(pdf_output, str):
+            pdf_output = pdf_output.encode('latin-1')
+        return io.BytesIO(pdf_output), None
+
+    # =====================================================================================
+    # === إضافة جديدة (٤ - جزء ثانٍ): توليد تقرير متابعة PDF من صفحة واحدة لطالب معيّن،
+    # يلخّص تاريخ أوراق العمل التي كُيّفت له (يُستخدم من قسم "تقرير متابعة الطالب" أعلاه). ===
+    # =====================================================================================
+    def create_progress_report_pdf(student_name, history_rows_list):
+        if not PDF_AVAILABLE:
+            return None, "مكتبة PDF غير متوفرة."
+        shaping_ready, font_path, reshape_func, display_func, _logs = _ensure_arabic_pdf_support()
+
+        pdf = FPDF()
+        pdf.add_page()
+        use_arabic = bool(font_path and shaping_ready)
+        if use_arabic:
+            pdf.add_font("ArabicFont", "", font_path, uni=True)
+            pdf.set_font("ArabicFont", size=16)
+            title = display_func(reshape_func(f"تقرير متابعة الطالب: {student_name}"))
+        else:
+            pdf.set_font("Arial", size=14)
+            title = f"Progress Report: {student_name}"
+        pdf.multi_cell(0, 10, txt=title, align="C")
+        pdf.ln(4)
+
+        for row in history_rows_list:
+            line = f"{row['created_at'][:10]}  |  {row['subject']}  |  {row['adaptation_level']}  |  {row['mode']}"
+            pdf.set_font("ArabicFont" if use_arabic else "Arial", size=11)
+            content = display_func(reshape_func(line)) if use_arabic else line.encode('latin-1', 'ignore').decode('latin-1')
+            try:
+                pdf.multi_cell(0, 8, txt=content, align="R")
+            except Exception:
+                pass
+            pdf.ln(1)
+
+        pdf_output = pdf.output()
+        if isinstance(pdf_output, str):
+            pdf_output = pdf_output.encode('latin-1')
+        return io.BytesIO(pdf_output), None
+
+    # =====================================================================================
+    # === إضافة جديدة (٦ + ٧ - جزء الفصل): تفصل استجابة الذكاء الاصطناعي الواحدة إلى
+    # ثلاثة أجزاء: نص ورقة العمل الرئيسي، نموذج الإجابات (JSON)، وقائمة المفردات
+    # الأساسية — دون الحاجة لاستدعاء إضافي منفصل للنموذج، توفيراً للوقت والتكلفة. ===
+    # =====================================================================================
+    def parse_ai_sections(full_text):
+        main_text = full_text
+        answer_key = []
+        vocab_words = []
+
+        rest = ""
+        if "### ANSWER_KEY_JSON ###" in full_text:
+            main_text, rest = full_text.split("### ANSWER_KEY_JSON ###", 1)
+
+        json_part, vocab_part = rest, ""
+        if "### KEY_VOCAB ###" in rest:
+            json_part, vocab_part = rest.split("### KEY_VOCAB ###", 1)
+
+        try:
+            json_part_clean = json_part.strip().strip("`").strip()
+            if json_part_clean:
+                answer_key = json.loads(json_part_clean)
+                if not isinstance(answer_key, list):
+                    answer_key = []
+        except Exception:
+            answer_key = []
+
+        if vocab_part.strip():
+            vocab_words = [w.strip() for w in vocab_part.strip().split(",") if w.strip()][:6]
+
+        return main_text.strip(), answer_key, vocab_words
+
+    # =====================================================================================
     # === تعديل جوهري: توليد ملفات التحميل (Word/PPT/PDF) مرة واحدة فقط لكل نص مُكيَّف،
     # بدل إعادة توليدها (بما فيها صور الذكاء الاصطناعي المكلفة) في كل rerun من ستريمليت ===
     # =====================================================================================
     if "adapted_text" not in st.session_state:
         st.session_state.adapted_text = None
+    if "adapted_text_draft" not in st.session_state:
+        st.session_state.adapted_text_draft = None
+    if "answer_key" not in st.session_state:
+        st.session_state.answer_key = []
+    if "vocab_words" not in st.session_state:
+        st.session_state.vocab_words = []
     if "just_generated" not in st.session_state:
         st.session_state.just_generated = False
     if "generated_files" not in st.session_state:
         st.session_state.generated_files = {}
     if "generated_for_text" not in st.session_state:
         st.session_state.generated_for_text = None
+    if "history_saved_for" not in st.session_state:
+        st.session_state.history_saved_for = None
 
     try:
         start_btn_container = st.container(key="start-ai-button")
@@ -1201,17 +1649,43 @@ else:
         start_clicked = st.button("🚀 Start", use_container_width=True)
 
     if start_clicked:
+        # إعادة تصفير دورة العمل بالكامل عند بدء تكييف جديد
+        st.session_state.adapted_text = None
+        st.session_state.adapted_text_draft = None
+        st.session_state.answer_key = []
+        st.session_state.vocab_words = []
+        st.session_state.generated_files = {}
+        st.session_state.generated_for_text = None
+        st.session_state.history_saved_for = None
+
         if not extracted_content.strip():
             extracted_content = f"ورقة عمل عامة لمبحث {selected_subject} للصف {selected_grade} وفق النظام {selected_system}."
 
         with st.spinner(" "):
 
             trimmed_content = extracted_content[:MAX_INPUT_CHARS] if len(extracted_content) > MAX_INPUT_CHARS else extracted_content
+            template_hint = ADAPTATION_TEMPLATE_HINTS.get(selected_category, "")
+
+            # تعليمات إضافية موحّدة تُطلب في نهاية كل استجابة لدعم نموذج التصحيح
+            # التلقائي (إضافة ٦) وبطاقات PECS البصرية (إضافة ٧) دون استدعاء إضافي للنموذج
+            structured_output_instructions = """
+                بعد الانتهاء من كتابة ورقة العمل كاملة، أضف بالضبط القسمين التاليين في النهاية
+                (لا تكتب أي نص بعدهما، والتزم بالتنسيق حرفياً):
+
+                ### ANSWER_KEY_JSON ###
+                [{"q": "نص مختصر للسؤال", "a": "الإجابة النموذجية الصحيحة"}]
+                (اكتب عنصراً واحداً داخل القائمة لكل سؤال تقييمي فعلي ورد في الورقة)
+
+                ### KEY_VOCAB ###
+                اكتب هنا فقط ٤ إلى ٦ كلمات مفتاحية أساسية من محتوى الورقة، مفصولة بفواصل، بدون أي شرح إضافي.
+            """
 
             if generate_alternative:
                 prompt = f"""
                 أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
                 مطلوب تصميم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
+
+                إرشاد تكييف معتمد لهذه الفئة (استخدمه كأساس أسلوبي): {template_hint}
 
                 البيانات الأساسية:
                 - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
@@ -1221,11 +1695,15 @@ else:
                 {trimmed_content}
 
                 اكتب ورقة العمل والأسئلة والتمارين والحلول بخطوات تفصيلية كاملة وواضحة باللغة العربية.
+
+                {structured_output_instructions}
                 """
             else:
                 prompt = f"""
                 أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
                 مطلوب تنفيذ **تكييف وتطوير شامل ودقيق** لورقة العمل التالية لمبحث ({selected_subject}) بناءً على مستوى التكييف ({selected_level}) والحالة الخاصة ({selected_condition}).
+
+                إرشاد تكييف معتمد لهذه الفئة (استخدمه كأساس أسلوبي): {template_hint}
 
                 البيانات الأساسية:
                 - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
@@ -1235,9 +1713,11 @@ else:
                 {trimmed_content}
 
                 قم بإعادة صياغة ورقة العمل وكتابة الأسئلة المعدلة، التمارين التدريبية، والحلول بشكل كامل ووافٍ دون أي نقصان وبأسلوب تربوي متميز.
+
+                {structured_output_instructions}
                 """
 
-            adapted_text = None
+            adapted_text_raw = None
             models_to_try = ["gemini-3.5-flash-lite", "gemini-2.5-flash"]
             last_error = None
             for model_name in models_to_try:
@@ -1251,21 +1731,50 @@ else:
                         ),
                     )
                     if response and response.text:
-                        adapted_text = response.text
+                        adapted_text_raw = response.text
                         break
                 except Exception as e:
                     last_error = e
                     time.sleep(1)
                     continue
 
-            if adapted_text:
-                st.session_state.adapted_text = adapted_text
+            if adapted_text_raw:
+                main_text, answer_key, vocab_words = parse_ai_sections(adapted_text_raw)
+                st.session_state.adapted_text_draft = main_text
+                st.session_state.answer_key = answer_key
+                st.session_state.vocab_words = vocab_words
                 st.session_state.just_generated = True
-                st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully!")
+                st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully! راجعها أدناه قبل التصدير.")
             else:
                 st.error("عذراً، تعذّر الاتصال بخدمة الذكاء الاصطناعي حالياً. يرجى المحاولة لاحقاً، أو التأكد من صلاحية مفتاح GOOGLE_API_KEY.")
                 if last_error:
                     st.caption(f"تفاصيل تقنية: {last_error}")
+
+    # =====================================================================================
+    # === إضافة جديدة (٢): خطوة مراجعة وتعديل يدوي قبل التصدير النهائي — النص لا يذهب
+    # مباشرة لتوليد الملفات، بل يُعرض كمسودة قابلة للتعديل، ولا تُنشأ ملفات Word/PPT/PDF
+    # إلا بعد ضغط المعلم على "اعتماد وتصدير". ===
+    # =====================================================================================
+    if st.session_state.adapted_text_draft and not st.session_state.adapted_text:
+        st.markdown("### ✏️ مراجعة وتعديل الورقة قبل التصدير النهائي / Review & Edit Before Export")
+        st.info("عدّل النص مباشرة إذا رغبت، ثم اضغط 'اعتماد وتصدير' لإنشاء ملفات التحميل النهائية.")
+        edited_text = st.text_area(
+            "محتوى ورقة العمل / Worksheet Content:",
+            value=st.session_state.adapted_text_draft,
+            height=420,
+            key="review_textarea"
+        )
+        col_approve, col_discard = st.columns(2)
+        with col_approve:
+            if st.button("✅ اعتماد وتصدير / Approve & Export", use_container_width=True, key="approve_export_btn"):
+                st.session_state.adapted_text = edited_text
+                st.rerun()
+        with col_discard:
+            if st.button("🔄 إلغاء والبدء من جديد / Discard & Restart", use_container_width=True, key="discard_btn"):
+                st.session_state.adapted_text_draft = None
+                st.session_state.answer_key = []
+                st.session_state.vocab_words = []
+                st.rerun()
 
     if st.session_state.adapted_text:
 
@@ -1277,22 +1786,41 @@ else:
         st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
         st.markdown(st.session_state.adapted_text)
 
+        # --- إضافة جديدة (١): حفظ نسخة من هذه الورقة في سجل الطالب مرة واحدة فقط لكل نص معتمد ---
+        current_text = st.session_state.adapted_text
+        if st.session_state.history_saved_for != current_text:
+            _history_student_id = selected_student_record["id"] if selected_student_record else None
+            _history_student_name = (
+                selected_student_record["full_name"] if selected_student_record
+                else (new_student_name.strip() if new_student_name.strip() else "بدون ربط بطالب")
+            )
+            save_worksheet_history(
+                current_teacher, _history_student_id, _history_student_name,
+                selected_subject, selected_grade, selected_level, mode_items[mode_idx][1],
+                current_text, json.dumps(st.session_state.answer_key, ensure_ascii=False)
+            )
+            st.session_state.history_saved_for = current_text
+
         st.markdown("---")
         st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
 
         # --- تعديل: توليد الملفات مرة واحدة فقط لكل نص مُكيَّف جديد، وتخزينها كبايتات جاهزة ---
-        current_text = st.session_state.adapted_text
         if st.session_state.generated_for_text != current_text:
             with st.spinner("جاري تجهيز ملفات Word و PowerPoint و PDF للتحميل (مرة واحدة فقط)..."):
                 word_bio = create_word_file(current_text)
                 ppt_bio = create_ppt_file(current_text)
                 pdf_bio, pdf_warning = create_pdf_file(current_text)
+                answer_key_excel_bio = create_answer_key_excel(st.session_state.answer_key)
+                pecs_pdf_bio, pecs_warning = create_pecs_cards_pdf(st.session_state.vocab_words)
 
                 st.session_state.generated_files = {
                     "word": word_bio.getvalue() if word_bio else None,
                     "ppt": ppt_bio.getvalue() if ppt_bio else None,
                     "pdf": pdf_bio.getvalue() if pdf_bio else None,
                     "pdf_warning": pdf_warning,
+                    "answer_key_excel": answer_key_excel_bio.getvalue() if answer_key_excel_bio else None,
+                    "pecs_pdf": pecs_pdf_bio.getvalue() if pecs_pdf_bio else None,
+                    "pecs_warning": pecs_warning,
                 }
                 st.session_state.generated_for_text = current_text
 
@@ -1350,6 +1878,30 @@ else:
             else:
                 # نعرض سبب الفشل الحقيقي بدل عبارة عامة، حتى يعرف المستخدم بالضبط ما الناقص
                 st.error(files.get("pdf_warning") or "تصدير PDF غير متوفر حالياً لسبب غير معروف.")
+
+        # --- إضافة جديدة (٦ + ٧): صف تحميل إضافي لنموذج التصحيح وبطاقات PECS البصرية ---
+        st.markdown("#### 🧩 أدوات إضافية / Extra Tools:")
+        col4, col5 = st.columns(2)
+        with col4:
+            if files.get("answer_key_excel") and OPENPYXL_AVAILABLE:
+                st.download_button(
+                    label="📊 تحميل نموذج التصحيح (Excel)",
+                    data=files["answer_key_excel"],
+                    file_name="Answer_Key.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.info("نموذج التصحيح غير متوفر لهذه الورقة (لم يُستخرج بنك إجابات صالح).")
+        with col5:
+            if files.get("pecs_pdf"):
+                st.download_button(
+                    label="🖼️ تحميل بطاقات PECS البصرية (PDF)",
+                    data=files["pecs_pdf"],
+                    file_name="PECS_Cards.pdf",
+                    mime="application/pdf"
+                )
+            else:
+                st.info(files.get("pecs_warning") or "بطاقات PECS غير متوفرة لهذه الورقة.")
 
         st.markdown("---")
         st.markdown(f"""
