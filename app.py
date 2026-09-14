@@ -284,6 +284,15 @@ st.markdown(f"""
         max-width: 92px;
     }}
 
+    /* ===== صندوق أبيض واحد يلف كامل شبكة دوائر المواد الدراسية ===== */
+    div[class*="st-key-subjects-white-card"] {{
+        background-color: {WHITE} !important;
+        border-radius: 22px !important;
+        padding: 18px 14px 8px 14px !important;
+        margin-bottom: 18px !important;
+        box-shadow: 0px 4px 14px rgba(16,27,45,0.08);
+    }}
+
     .selection-summary {{
         background-color: {NAVY_DARK};
         color: {GOLD};
@@ -551,14 +560,20 @@ else:
 
         return st.session_state[state_key]
 
-    # ---------------- شبكة دوائر اختيار المادة الدراسية (٤ مواد بجانب بعض) ----------------
-    subject_idx = render_subject_circles(
-        "📚 اختر المادة الدراسية / Select Subject",
-        subjects_with_icons,
-        "subject_idx",
-        columns_per_row=4,
-        default_index=0
-    )
+    # ---------------- صندوق أبيض واحد يلف شبكة دوائر اختيار المادة الدراسية بالكامل ----------------
+    try:
+        subjects_white_card = st.container(key="subjects-white-card")
+    except TypeError:
+        subjects_white_card = st.container()
+
+    with subjects_white_card:
+        subject_idx = render_subject_circles(
+            "📚 اختر المادة الدراسية / Select Subject",
+            subjects_with_icons,
+            "subject_idx",
+            columns_per_row=4,
+            default_index=0
+        )
     selected_subject = subjects[subject_idx]
 
     # ---------------- شبكة اختيار مستوى ونوع التكييف ----------------
