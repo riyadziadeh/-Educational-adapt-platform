@@ -129,37 +129,62 @@ def _hash_pin(pin_text):
     return hashlib.sha256(pin_text.encode("utf-8")).hexdigest()
 
 
-def teacher_login_or_register(teacher_name, pin_text):
+def _is_valid_password(pin_text):
+    """كلمة المرور يجب أن تكون ٤ أرقام بالضبط (وليس ٤ فأكثر)."""
+    return pin_text.isdigit() and len(pin_text) == 4
+
+
+def register_teacher(username, password):
     """
-    يتحقق من اسم المعلم ورمز الدخول (PIN):
-    - لو الاسم غير موجود بقاعدة البيانات: يُسجَّل تلقائياً بهذا الرمز (أول استخدام = تسجيل).
-    - لو الاسم موجود: يجب أن يتطابق الرمز مع المخزَّن، وإلا يُرفض الدخول.
+    إنشاء حساب معلم جديد. يرفض الطلب لو اسم المستخدم محجوز مسبقاً.
     يعيد tuple: (success: bool, message: str)
     """
-    if not teacher_name.strip() or not pin_text.strip():
-        return False, "الرجاء إدخال الاسم ورمز الدخول (PIN) معاً."
-    if not pin_text.strip().isdigit() or len(pin_text.strip()) < 4:
-        return False, "رمز الدخول يجب أن يكون ٤ أرقام على الأقل."
+    username = username.strip()
+    password = password.strip()
+
+    if not username or not password:
+        return False, "الرجاء إدخال اسم المستخدم وكلمة المرور معاً."
+    if not _is_valid_password(password):
+        return False, "كلمة المرور يجب أن تكون ٤ أرقام بالضبط (مثال: 1234)."
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT pin_hash FROM teachers WHERE teacher_name = ?", (teacher_name.strip(),))
+    cur.execute("SELECT teacher_name FROM teachers WHERE teacher_name = ?", (username,))
+    if cur.fetchone() is not None:
+        conn.close()
+        return False, "اسم المستخدم هذا محجوز مسبقاً. الرجاء اختيار اسم آخر أو تسجيل الدخول."
+
+    cur.execute(
+        "INSERT INTO teachers (teacher_name, pin_hash, created_at) VALUES (?, ?, ?)",
+        (username, _hash_pin(password), datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+    return True, "تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول به."
+
+
+def login_teacher(username, password):
+    """
+    تسجيل دخول معلم موجود مسبقاً. يرفض إن لم يوجد الحساب أو كانت كلمة المرور خاطئة.
+    يعيد tuple: (success: bool, message: str)
+    """
+    username = username.strip()
+    password = password.strip()
+
+    if not username or not password:
+        return False, "الرجاء إدخال اسم المستخدم وكلمة المرور معاً."
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT pin_hash FROM teachers WHERE teacher_name = ?", (username,))
     row = cur.fetchone()
+    conn.close()
 
     if row is None:
-        cur.execute(
-            "INSERT INTO teachers (teacher_name, pin_hash, created_at) VALUES (?, ?, ?)",
-            (teacher_name.strip(), _hash_pin(pin_text.strip()), datetime.now().isoformat())
-        )
-        conn.commit()
-        conn.close()
-        return True, "تم إنشاء حساب جديد بنجاح، رجاءً احفظ رمزك جيداً."
-    else:
-        conn.close()
-        if row["pin_hash"] == _hash_pin(pin_text.strip()):
-            return True, "تم تسجيل الدخول بنجاح."
-        else:
-            return False, "رمز الدخول غير صحيح لهذا الاسم."
+        return False, "لا يوجد حساب بهذا الاسم. الرجاء إنشاء حساب جديد أولاً."
+    if row["pin_hash"] != _hash_pin(password):
+        return False, "كلمة المرور غير صحيحة."
+    return True, "تم تسجيل الدخول بنجاح."
 
 
 def get_students(teacher_name):
@@ -493,7 +518,7 @@ st.markdown(f"""
 # التطبيق من عدة معلمين في نفس المدرسة دون الحاجة لنظام حسابات معقّد. ===
 # =========================================================================================
 with st.sidebar:
-    st.markdown("### 👩‍🏫 تسجيل دخول المعلم / Teacher Login")
+    st.markdown("### 👩‍🏫 حساب المعلم / Teacher Account")
     if "teacher_name" not in st.session_state:
         st.session_state.teacher_name = ""
 
@@ -503,21 +528,50 @@ with st.sidebar:
             st.session_state.teacher_name = ""
             st.rerun()
     else:
-        st.caption("سجّل دخولك بأي اسم ورمز PIN من ٤ أرقام. أول مرة تدخل فيها بهذا الاسم "
-                   "والرمز يصير حسابك، والمرات الجاية لازم تكتب نفس الاسم ونفس الرمز بالضبط.")
-        login_name_input = st.text_input("اسم المعلم / Teacher Name:", key="login_name_input")
-        login_pin_input = st.text_input(
-            "رمز الدخول (٤ أرقام على الأقل) / PIN Code:",
-            key="login_pin_input", type="password", max_chars=8
+        auth_mode = st.radio(
+            "اختر / Choose:",
+            ["🔐 تسجيل دخول / Login", "🆕 إنشاء حساب جديد / Create Account"],
+            key="auth_mode_radio"
         )
-        if st.button("🔐 دخول / تسجيل جديد / Login / Register", key="login_submit_btn"):
-            success, message = teacher_login_or_register(login_name_input, login_pin_input)
-            if success:
-                st.session_state.teacher_name = login_name_input.strip()
-                st.success(message)
-                st.rerun()
-            else:
-                st.error(message)
+
+        if auth_mode == "🔐 تسجيل دخول / Login":
+            st.caption("أدخل اسم المستخدم وكلمة المرور اللي سجّلت فيهم حسابك.")
+            login_username = st.text_input("اسم المستخدم / Username:", key="login_username_input")
+            login_password = st.text_input(
+                "كلمة المرور (٤ أرقام) / Password:",
+                key="login_password_input", type="password", max_chars=4
+            )
+            if st.button("🔐 دخول / Login", key="login_submit_btn", use_container_width=True):
+                success, message = login_teacher(login_username, login_password)
+                if success:
+                    st.session_state.teacher_name = login_username.strip()
+                    st.success(message)
+                    st.rerun()
+                else:
+                    st.error(message)
+
+        else:
+            st.caption("اختر اسم مستخدم جديد وكلمة مرور من ٤ أرقام بالضبط (مثال: 1234).")
+            register_username = st.text_input("اسم المستخدم الجديد / New Username:", key="register_username_input")
+            register_password = st.text_input(
+                "كلمة المرور (٤ أرقام بالضبط) / Password:",
+                key="register_password_input", type="password", max_chars=4
+            )
+            register_password_confirm = st.text_input(
+                "تأكيد كلمة المرور / Confirm Password:",
+                key="register_password_confirm_input", type="password", max_chars=4
+            )
+            if st.button("🆕 إنشاء الحساب / Create Account", key="register_submit_btn", use_container_width=True):
+                if register_password != register_password_confirm:
+                    st.error("كلمة المرور وتأكيدها غير متطابقين.")
+                else:
+                    success, message = register_teacher(register_username, register_password)
+                    if success:
+                        st.session_state.teacher_name = register_username.strip()
+                        st.success(message)
+                        st.rerun()
+                    else:
+                        st.error(message)
 
 # عرض الشعار الجديد (new_logo.png) بجودة عالية وبحجم مناسب في منتصف الصفحة تماماً
 col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
@@ -1965,35 +2019,4 @@ else:
                     label="🖼️ تحميل بطاقات PECS البصرية (PDF)",
                     data=files["pecs_pdf"],
                     file_name="PECS_Cards.pdf",
-                    mime="application/pdf"
-                )
-            else:
-                st.info(files.get("pecs_warning") or "بطاقات PECS غير متوفرة لهذه الورقة.")
-
-        st.markdown("---")
-        st.markdown(f"""
-            <div class="animated-box" style="
-                background: linear-gradient(135deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
-                border: none;
-                padding: 34px 22px;
-                border-radius: 22px;
-                text-align: center;
-                margin-top: 24px;
-                box-shadow: 0px 12px 32px rgba(16,27,45,0.35);
-            ">
-                <div style="font-size: 42px; line-height: 1; margin-bottom: 10px;">🎓✨</div>
-                <h3 style="margin: 0; font-weight: 900; line-height: 1.6; color: {GOLD}; font-size: 24px;">
-                    شكراً لاستخدامك<br>Edu Worksheet Adapt
-                </h3>
-                <p style="margin: 10px 0 0 0; font-weight: 700; color: {WHITE}; font-size: 16px; line-height: 1.8;">
-                    نحو تعليم أكثر شمولاً يليق بكل طالب 💙
-                </p>
-                <div style="height: 1px; background: rgba(255,255,255,0.28); margin: 20px auto; width: 55%;"></div>
-                <h4 style="margin: 0; font-weight: 800; color: {WHITE}; font-size: 17px;">
-                    Thank you for using Edu Worksheet Adapt
-                </h4>
-                <p style="margin: 6px 0 0 0; color: rgba(255,255,255,0.75); font-size: 13px; font-weight: 500;">
-                    Toward more inclusive education for every learner
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
+                    mi
