@@ -291,14 +291,22 @@ WHITE = "#FFFFFF"
 
 st.markdown(f"""
     <style>
+    /* استيراد خط Cairo العصري (يدعم العربية بشكل ممتاز) لطابع بصري أحدث لعام 2026 */
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
+
+    html, body, [class*="css"], .stApp, .stMarkdown, p, h1, h2, h3, h4, label, button {{
+        font-family: 'Cairo', -apple-system, sans-serif !important;
+    }}
+
     /* إخفاء أيقونة GitHub وحدها من الشريط العلوي */
     .stAppToolbar [data-testid="stToolbarActions"] {{
         display: none !important;
     }}
 
-    /* خلفية عامة فاتحة زرقاء هادئة تماشياً مع هوية التطبيق */
+    /* خلفية متدرجة ناعمة حديثة بدل اللون الفلات القديم، مع طبقة زجاجية خفيفة */
     .stApp {{
-        background-color: {NAVY_LIGHT};
+        background: linear-gradient(160deg, #F4F8FF 0%, {NAVY_LIGHT} 45%, #E4ECFB 100%);
+        background-attachment: fixed;
     }}
 
     /* تأثير الحركة الانسيابية (Animation) لصندوق الشكر */
@@ -310,18 +318,19 @@ st.markdown(f"""
         animation: fadeInScale 0.8s ease-in-out;
     }}
 
-    /* شريط علوي كحلي غامق يشبه هيدر التطبيقات مع بحث وهمي للزينة */
+    /* شريط علوي كحلي غامق يشبه هيدر التطبيقات الحديثة، بحواف أدور وظل أنعم */
     .app-topbar {{
-        background: linear-gradient(135deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
-        border-radius: 18px;
-        padding: 18px 20px;
-        margin-bottom: 22px;
-        box-shadow: 0px 6px 18px rgba(16,27,45,0.25);
+        background: linear-gradient(120deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
+        border-radius: 26px;
+        padding: 18px 22px;
+        margin-bottom: 24px;
+        box-shadow: 0px 10px 30px rgba(16,27,45,0.22);
     }}
     .app-topbar .search-fake {{
-        background-color: {WHITE};
-        border-radius: 12px;
-        padding: 10px 16px;
+        background-color: rgba(255,255,255,0.92);
+        backdrop-filter: blur(6px);
+        border-radius: 16px;
+        padding: 12px 18px;
         color: #7d8a9a;
         font-weight: 700;
         text-align: right;
@@ -335,36 +344,39 @@ st.markdown(f"""
         color: {NAVY_DARK} !important;
     }}
 
-    /* صناديق الاختيار (Selectbox) و رافع الملفات بهوية كحلي/ذهبي موحّدة لكل الأوضاع */
+    /* صناديق الاختيار (Selectbox) و رافع الملفات بحواف أدور وحدود ذهبية ناعمة */
     div[data-baseweb="select"] > div, div.stFileUploader > div {{
-        background-color: {WHITE} !important;
-        border-radius: 12px !important;
-        border: 2px solid {GOLD} !important;
+        background-color: rgba(255,255,255,0.85) !important;
+        backdrop-filter: blur(8px);
+        border-radius: 18px !important;
+        border: 2px solid {GOLD}99 !important;
     }}
     div[data-baseweb="select"] > div * {{
         color: {NAVY_DARK} !important;
     }}
 
-    /* بطاقات الشبكة الشبيهة بواجهة التطبيق المرفقة */
+    /* بطاقات الشبكة بطابع زجاجي عصري (Glassmorphism) */
     div[data-testid="stButton"] > button {{
         width: 100%;
         min-height: 108px;
         height: auto !important;
         padding: 16px 12px !important;
-        border-radius: 16px !important;
-        border: 2px solid {BLUE_ACCENT}33 !important;
-        background-color: {WHITE} !important;
+        border-radius: 22px !important;
+        border: 1.5px solid rgba(46,111,187,0.18) !important;
+        background: rgba(255,255,255,0.75) !important;
+        backdrop-filter: blur(10px);
         color: {NAVY_DARK} !important;
         font-weight: 800 !important;
         font-size: 16px !important;
         line-height: 1.6 !important;
-        box-shadow: 0px 3px 10px rgba(16,27,45,0.08);
-        transition: all 0.15s ease-in-out;
+        box-shadow: 0px 6px 18px rgba(16,27,45,0.10);
+        transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
         white-space: pre-line !important;
     }}
     div[data-testid="stButton"] > button:hover {{
-        border: 2px solid {GOLD} !important;
-        transform: translateY(-2px);
+        border: 1.5px solid {GOLD} !important;
+        transform: translateY(-3px) scale(1.01);
+        box-shadow: 0px 10px 24px rgba(16,27,45,0.16);
     }}
 
     /* ===== زر "ابدأ تكييف ورقة العمل" الرئيسي: عرض كامل من الطرف للطرف (وليس مربعاً صغيراً) ===== */
@@ -379,27 +391,29 @@ st.markdown(f"""
     div[class*="st-key-start-ai-button"] div[data-testid="stButton"] > button {{
         width: 100% !important;
         display: block !important;
-        background-color: {WHITE} !important;
-        color: {BLUE_ACCENT} !important;
+        background: linear-gradient(120deg, {GOLD} 0%, #FFD84D 100%) !important;
+        color: {NAVY_DARK} !important;
         font-weight: 900 !important;
         font-size: 19px !important;
         line-height: 1.6 !important;
         height: auto !important;
         min-height: 90px !important;
         padding: 18px 14px !important;
-        border-radius: 18px !important;
-        border: 3px solid {NAVY_DARK} !important;
-        box-shadow: 0px 6px 16px rgba(16,27,45,0.18);
+        border-radius: 28px !important;
+        border: none !important;
+        box-shadow: 0px 12px 28px rgba(241,196,15,0.35);
         white-space: normal !important;
         overflow: visible !important;
         word-wrap: break-word !important;
+        transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1) !important;
     }}
     div[class*="st-key-start-ai-button"] div[data-testid="stButton"] > button:hover {{
-        border: 3px solid {GOLD} !important;
-        color: {BLUE_ACCENT} !important;
+        transform: translateY(-3px) scale(1.01);
+        box-shadow: 0px 16px 34px rgba(241,196,15,0.45);
+        color: {NAVY_DARK} !important;
     }}
     div[class*="st-key-start-ai-button"] div[data-testid="stButton"] > button p {{
-        color: {BLUE_ACCENT} !important;
+        color: {NAVY_DARK} !important;
         font-weight: 900 !important;
         font-size: 19px !important;
         white-space: normal !important;
@@ -449,8 +463,9 @@ st.markdown(f"""
         aspect-ratio: 1 / 1 !important;
         flex: none !important;
         border-radius: 50% !important;
-        background: linear-gradient(160deg, {WHITE} 0%, {NAVY_LIGHT} 100%) !important;
-        border: 3px solid {BLUE_ACCENT}55 !important;
+        background: rgba(255,255,255,0.65) !important;
+        backdrop-filter: blur(8px);
+        border: 2px solid rgba(46,111,187,0.25) !important;
         font-size: 22px !important;
         line-height: 1 !important;
         padding: 0 !important;
@@ -458,19 +473,22 @@ st.markdown(f"""
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        box-shadow: 0px 4px 10px rgba(16,27,45,0.12);
+        box-shadow: 0px 6px 16px rgba(16,27,45,0.10);
+        transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1) !important;
     }}
     div[class*="st-key-circlebtn-"] button p {{
         margin: 0 !important;
         line-height: 1 !important;
     }}
     div[class*="st-key-circlebtn-"] button:hover {{
-        border: 3px solid {GOLD} !important;
-        transform: scale(1.08);
+        border: 2px solid {GOLD} !important;
+        transform: scale(1.1);
+        box-shadow: 0px 10px 22px rgba(16,27,45,0.16);
     }}
     div[class*="st-key-circlebtn-"][class*="-on"] button {{
-        border: 3px solid {GOLD} !important;
-        background: linear-gradient(160deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%) !important;
+        border: 2px solid {GOLD} !important;
+        background: linear-gradient(150deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%) !important;
+        box-shadow: 0px 8px 20px rgba(46,111,187,0.35);
     }}
     .circle-caption {{
         text-align: center;
@@ -482,32 +500,39 @@ st.markdown(f"""
         max-width: 92px;
     }}
 
-    /* ===== صندوق أبيض واحد يلف كامل شبكة دوائر المواد الدراسية ===== */
+    /* ===== صندوق زجاجي واحد يلف كامل شبكة دوائر المواد الدراسية (Glassmorphism) ===== */
     div[class*="st-key-subjects-white-card"] {{
-        background-color: {WHITE} !important;
-        border-radius: 22px !important;
-        padding: 18px 14px 8px 14px !important;
-        margin-bottom: 18px !important;
-        box-shadow: 0px 4px 14px rgba(16,27,45,0.08);
+        background: rgba(255,255,255,0.55) !important;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255,255,255,0.6);
+        border-radius: 28px !important;
+        padding: 20px 16px 10px 16px !important;
+        margin-bottom: 20px !important;
+        box-shadow: 0px 10px 28px rgba(16,27,45,0.10);
     }}
 
-    /* ===== صندوق قسم إدارة الطلاب ===== */
+    /* ===== صندوق قسم إدارة الطلاب (زجاجي أيضاً) ===== */
     div[class*="st-key-student-mgmt-card"] {{
-        background-color: {WHITE} !important;
-        border-radius: 18px !important;
-        padding: 14px !important;
-        margin-bottom: 16px !important;
-        box-shadow: 0px 4px 12px rgba(16,27,45,0.06);
+        background: rgba(255,255,255,0.55) !important;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255,255,255,0.6);
+        border-radius: 24px !important;
+        padding: 16px !important;
+        margin-bottom: 18px !important;
+        box-shadow: 0px 8px 22px rgba(16,27,45,0.08);
     }}
 
     .selection-summary {{
-        background-color: {NAVY_DARK};
+        background: linear-gradient(120deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
         color: {GOLD};
-        border-radius: 12px;
-        padding: 10px 16px;
+        border-radius: 20px;
+        padding: 12px 18px;
         text-align: center;
         font-weight: 800;
-        margin: 10px 0 18px 0;
+        margin: 12px 0 20px 0;
+        box-shadow: 0px 8px 20px rgba(16,27,45,0.18);
     }}
     </style>
 """, unsafe_allow_html=True)
@@ -573,7 +598,26 @@ with st.sidebar:
                     else:
                         st.error(message)
 
-# عرض الشعار الجديد (new_logo.png) بجودة عالية وبحجم مناسب في منتصف الصفحة تماماً
+# =========================================================================================
+# === إضافة جديدة: إزالة الخلفية البيضاء من صورة الشعار تلقائياً وتحويلها لشفافة،
+# حتى يندمج الشعار بصرياً مع خلفية التطبيق بدل الظهور داخل مربع أبيض واضح الحواف.
+# النتيجة مخزّنة مؤقتاً (cache) حتى لا تُعاد المعالجة في كل rerun. ===
+# =========================================================================================
+@st.cache_data(show_spinner=False)
+def _load_logo_with_transparent_background(path, white_threshold=245):
+    image = Image.open(path).convert("RGBA")
+    datas = image.getdata()
+    new_data = []
+    for item in datas:
+        if item[0] >= white_threshold and item[1] >= white_threshold and item[2] >= white_threshold:
+            new_data.append((255, 255, 255, 0))
+        else:
+            new_data.append(item)
+    image.putdata(new_data)
+    return image
+
+
+# عرض الشعار الجديد (new_logo.png) بجودة عالية وبخلفية شفافة تندمج مع تصميم التطبيق
 col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
 with col_logo2:
     logo_loaded = False
@@ -584,7 +628,10 @@ with col_logo2:
     ]
     for filename in logo_filenames:
         if os.path.exists(filename):
-            image = Image.open(filename)
+            try:
+                image = _load_logo_with_transparent_background(filename)
+            except Exception:
+                image = Image.open(filename)
             st.image(image, use_container_width=True)
             logo_loaded = True
             break
