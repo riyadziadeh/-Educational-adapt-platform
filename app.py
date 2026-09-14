@@ -67,60 +67,22 @@ except ImportError:
     OPENPYXL_AVAILABLE = False
 
 # =========================================================================================
-# === إضافة جديدة (١): طبقة قاعدة بيانات لحفظ "ذاكرة الطالب" — تدعم الآن Supabase
-# (PostgreSQL) كتخزين دائم لا يُمسح عند إعادة النشر أو نوم التطبيق، مع رجوع تلقائي
-# لملف SQLite محلي مؤقت فقط إن لم يُضبط اتصال Supabase بعد (SUPABASE_DB_URL بالـ Secrets).
+# === إضافة جديدة (١): طبقة قاعدة بيانات محلية خفيفة (SQLite) لحفظ "ذاكرة الطالب" ===
+# تُستخدم لربط كل ورقة عمل تم تكييفها بطالب محدد، بحيث يقدر المعلم يرجع لسجل الطالب
+# لاحقاً بدل ما يبدأ من الصفر في كل مرة، ولإصدار تقرير متابعة (الإضافة رقم ٤).
 # =========================================================================================
-try:
-    import psycopg2
-    PSYCOPG2_AVAILABLE = True
-except ImportError:
-    PSYCOPG2_AVAILABLE = False
-
-SUPABASE_DB_URL = None
-try:
-    SUPABASE_DB_URL = st.secrets.get("SUPABASE_DB_URL", None)
-except Exception:
-    SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL")
-
-USE_POSTGRES = bool(SUPABASE_DB_URL and PSYCOPG2_AVAILABLE)
-DB_PATH = "edu_adapt_data.db"  # يُستخدم فقط كتخزين احتياطي مؤقت (غير دائم على الاستضافة السحابية)
+DB_PATH = "edu_adapt_data.db"
 
 
 def get_db():
-    if USE_POSTGRES:
-        return psycopg2.connect(SUPABASE_DB_URL, sslmode="require")
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def _q(sql):
-    """يحوّل صيغة الـ placeholders من ? (SQLite) إلى %s (PostgreSQL) عند الحاجة."""
-    return sql.replace("?", "%s") if USE_POSTGRES else sql
-
-
-def _rows_to_dicts(cur, rows):
-    if USE_POSTGRES:
-        colnames = [desc[0] for desc in cur.description]
-        return [dict(zip(colnames, row)) for row in rows]
-    return [dict(r) for r in rows]
-
-
-def _row_to_dict(cur, row):
-    if row is None:
-        return None
-    if USE_POSTGRES:
-        colnames = [desc[0] for desc in cur.description]
-        return dict(zip(colnames, row))
-    return dict(row)
-
-
 def init_db():
     conn = get_db()
     cur = conn.cursor()
-    id_column = "id SERIAL PRIMARY KEY" if USE_POSTGRES else "id INTEGER PRIMARY KEY AUTOINCREMENT"
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS teachers (
             teacher_name TEXT PRIMARY KEY,
@@ -128,9 +90,9 @@ def init_db():
             created_at TEXT
         )
     """)
-    cur.execute(f"""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS students (
-            {id_column},
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_name TEXT NOT NULL,
             full_name TEXT NOT NULL,
             grade TEXT,
@@ -140,9 +102,9 @@ def init_db():
             created_at TEXT
         )
     """)
-    cur.execute(f"""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS worksheet_history (
-            {id_column},
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_name TEXT NOT NULL,
             student_id INTEGER,
             student_name TEXT,
@@ -159,19 +121,7 @@ def init_db():
     conn.close()
 
 
-DB_INIT_ERROR = None
-try:
-    init_db()
-except Exception as e:
-    DB_INIT_ERROR = str(e)
-    if USE_POSTGRES:
-        # فشل الاتصال الفعلي بـ Supabase رغم توفر الإعداد — نرجع تلقائياً للتخزين
-        # المحلي المؤقت بدل أن ينهار التطبيق بالكامل، مع إبقاء رسالة الخطأ ظاهرة
-        USE_POSTGRES = False
-        try:
-            init_db()
-        except Exception:
-            pass
+init_db()
 
 
 def _hash_pin(pin_text):
@@ -199,13 +149,13 @@ def register_teacher(username, password):
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(_q("SELECT teacher_name FROM teachers WHERE teacher_name = ?"), (username,))
+    cur.execute("SELECT teacher_name FROM teachers WHERE teacher_name = ?", (username,))
     if cur.fetchone() is not None:
         conn.close()
         return False, "اسم المستخدم هذا محجوز مسبقاً. الرجاء اختيار اسم آخر أو تسجيل الدخول."
 
     cur.execute(
-        _q("INSERT INTO teachers (teacher_name, pin_hash, created_at) VALUES (?, ?, ?)"),
+        "INSERT INTO teachers (teacher_name, pin_hash, created_at) VALUES (?, ?, ?)",
         (username, _hash_pin(password), datetime.now().isoformat())
     )
     conn.commit()
@@ -226,8 +176,8 @@ def login_teacher(username, password):
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(_q("SELECT pin_hash FROM teachers WHERE teacher_name = ?"), (username,))
-    row = _row_to_dict(cur, cur.fetchone())
+    cur.execute("SELECT pin_hash FROM teachers WHERE teacher_name = ?", (username,))
+    row = cur.fetchone()
     conn.close()
 
     if row is None:
@@ -240,8 +190,8 @@ def login_teacher(username, password):
 def get_students(teacher_name):
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(_q("SELECT * FROM students WHERE teacher_name = ? ORDER BY full_name"), (teacher_name,))
-    rows = _rows_to_dicts(cur, cur.fetchall())
+    cur.execute("SELECT * FROM students WHERE teacher_name = ? ORDER BY full_name", (teacher_name,))
+    rows = cur.fetchall()
     conn.close()
     return [
         {
@@ -256,8 +206,8 @@ def save_student(teacher_name, full_name, grade, system, category, condition_tex
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        _q("INSERT INTO students (teacher_name, full_name, grade, system, category, condition_text, created_at) "
-           "VALUES (?, ?, ?, ?, ?, ?, ?)"),
+        "INSERT INTO students (teacher_name, full_name, grade, system, category, condition_text, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (teacher_name, full_name, grade, system, category, condition_text, datetime.now().isoformat())
     )
     conn.commit()
@@ -268,7 +218,7 @@ def update_student(student_id, grade, system, category, condition_text):
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        _q("UPDATE students SET grade=?, system=?, category=?, condition_text=? WHERE id=?"),
+        "UPDATE students SET grade=?, system=?, category=?, condition_text=? WHERE id=?",
         (grade, system, category, condition_text, student_id)
     )
     conn.commit()
@@ -280,10 +230,10 @@ def save_worksheet_history(teacher_name, student_id, student_name, subject, grad
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        _q("""INSERT INTO worksheet_history
+        """INSERT INTO worksheet_history
            (teacher_name, student_id, student_name, subject, grade, adaptation_level, mode,
             adapted_text, answer_key_json, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (teacher_name, student_id, student_name, subject, grade, level, mode,
          adapted_text, answer_key_json, datetime.now().isoformat())
     )
@@ -295,10 +245,10 @@ def get_student_history(teacher_name, student_id):
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        _q("SELECT * FROM worksheet_history WHERE teacher_name = ? AND student_id = ? ORDER BY created_at DESC"),
+        "SELECT * FROM worksheet_history WHERE teacher_name = ? AND student_id = ? ORDER BY created_at DESC",
         (teacher_name, student_id)
     )
-    rows = _rows_to_dicts(cur, cur.fetchall())
+    rows = cur.fetchall()
     conn.close()
     return rows
 
@@ -645,14 +595,6 @@ st.markdown(f"""
 # =========================================================================================
 with st.sidebar:
     st.markdown("### 👩‍🏫 حساب المعلم / Teacher Account")
-
-    if USE_POSTGRES and not DB_INIT_ERROR:
-        st.caption("🟢 التخزين دائم (متصل بقاعدة بيانات Supabase) — بياناتك لن تُفقد عند إعادة النشر.")
-    elif DB_INIT_ERROR:
-        st.caption(f"🔴 تعذّر الاتصال بقاعدة بيانات Supabase: {DB_INIT_ERROR}")
-        st.caption("سيتم استخدام تخزين مؤقت محلياً حتى يُحل الاتصال.")
-    else:
-        st.caption("🟡 التخزين مؤقت حالياً (لم يُضبط SUPABASE_DB_URL بعد) — البيانات قد تُفقد عند إعادة النشر.")
     if "teacher_name" not in st.session_state:
         st.session_state.teacher_name = ""
 
