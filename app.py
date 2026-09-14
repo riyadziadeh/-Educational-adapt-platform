@@ -84,6 +84,13 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS teachers (
+            teacher_name TEXT PRIMARY KEY,
+            pin_hash TEXT NOT NULL,
+            created_at TEXT
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_name TEXT NOT NULL,
@@ -115,6 +122,44 @@ def init_db():
 
 
 init_db()
+
+
+def _hash_pin(pin_text):
+    import hashlib
+    return hashlib.sha256(pin_text.encode("utf-8")).hexdigest()
+
+
+def teacher_login_or_register(teacher_name, pin_text):
+    """
+    يتحقق من اسم المعلم ورمز الدخول (PIN):
+    - لو الاسم غير موجود بقاعدة البيانات: يُسجَّل تلقائياً بهذا الرمز (أول استخدام = تسجيل).
+    - لو الاسم موجود: يجب أن يتطابق الرمز مع المخزَّن، وإلا يُرفض الدخول.
+    يعيد tuple: (success: bool, message: str)
+    """
+    if not teacher_name.strip() or not pin_text.strip():
+        return False, "الرجاء إدخال الاسم ورمز الدخول (PIN) معاً."
+    if not pin_text.strip().isdigit() or len(pin_text.strip()) < 4:
+        return False, "رمز الدخول يجب أن يكون ٤ أرقام على الأقل."
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT pin_hash FROM teachers WHERE teacher_name = ?", (teacher_name.strip(),))
+    row = cur.fetchone()
+
+    if row is None:
+        cur.execute(
+            "INSERT INTO teachers (teacher_name, pin_hash, created_at) VALUES (?, ?, ?)",
+            (teacher_name.strip(), _hash_pin(pin_text.strip()), datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+        return True, "تم إنشاء حساب جديد بنجاح، رجاءً احفظ رمزك جيداً."
+    else:
+        conn.close()
+        if row["pin_hash"] == _hash_pin(pin_text.strip()):
+            return True, "تم تسجيل الدخول بنجاح."
+        else:
+            return False, "رمز الدخول غير صحيح لهذا الاسم."
 
 
 def get_students(teacher_name):
@@ -451,18 +496,28 @@ with st.sidebar:
     st.markdown("### 👩‍🏫 تسجيل دخول المعلم / Teacher Login")
     if "teacher_name" not in st.session_state:
         st.session_state.teacher_name = ""
-    teacher_input = st.text_input(
-        "اسم المعلم / Teacher Name:",
-        value=st.session_state.teacher_name,
-        key="teacher_name_input",
-        help="أدخل اسمك لحفظ طلابك وسجل أوراقهم بشكل منفصل عن باقي المعلمين."
-    )
-    if teacher_input.strip():
-        st.session_state.teacher_name = teacher_input.strip()
+
     if st.session_state.teacher_name:
         st.success(f"مرحباً {st.session_state.teacher_name} 👋")
+        if st.button("🚪 تسجيل خروج / Logout", key="logout_btn"):
+            st.session_state.teacher_name = ""
+            st.rerun()
     else:
-        st.info("الرجاء إدخال اسمك لتفعيل ذاكرة الطلاب وتقارير المتابعة.")
+        st.caption("سجّل دخولك بأي اسم ورمز PIN من ٤ أرقام. أول مرة تدخل فيها بهذا الاسم "
+                   "والرمز يصير حسابك، والمرات الجاية لازم تكتب نفس الاسم ونفس الرمز بالضبط.")
+        login_name_input = st.text_input("اسم المعلم / Teacher Name:", key="login_name_input")
+        login_pin_input = st.text_input(
+            "رمز الدخول (٤ أرقام على الأقل) / PIN Code:",
+            key="login_pin_input", type="password", max_chars=8
+        )
+        if st.button("🔐 دخول / تسجيل جديد / Login / Register", key="login_submit_btn"):
+            success, message = teacher_login_or_register(login_name_input, login_pin_input)
+            if success:
+                st.session_state.teacher_name = login_name_input.strip()
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
 
 # عرض الشعار الجديد (new_logo.png) بجودة عالية وبحجم مناسب في منتصف الصفحة تماماً
 col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
@@ -1607,9 +1662,20 @@ else:
             json_part, vocab_part = rest.split("### KEY_VOCAB ###", 1)
 
         try:
-            json_part_clean = json_part.strip().strip("`").strip()
+            json_part_clean = json_part.strip()
+            # إزالة أي code fence من نوع ```json أو ``` بغض النظر عن مكانها
+            json_part_clean = json_part_clean.replace("```json", "").replace("```JSON", "").replace("```", "")
+            json_part_clean = json_part_clean.strip("` \n\t")
             if json_part_clean:
-                answer_key = json.loads(json_part_clean)
+                try:
+                    answer_key = json.loads(json_part_clean)
+                except Exception:
+                    # محاولة أخيرة: استخراج أول قائمة [ ... ] صالحة داخل النص حتى لو
+                    # كان هناك كلام إضافي قبلها أو بعدها لم يلتزم به النموذج بدقة
+                    start_idx = json_part_clean.find("[")
+                    end_idx = json_part_clean.rfind("]")
+                    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                        answer_key = json.loads(json_part_clean[start_idx:end_idx + 1])
                 if not isinstance(answer_key, list):
                     answer_key = []
         except Exception:
@@ -1670,11 +1736,12 @@ else:
             # التلقائي (إضافة ٦) وبطاقات PECS البصرية (إضافة ٧) دون استدعاء إضافي للنموذج
             structured_output_instructions = """
                 بعد الانتهاء من كتابة ورقة العمل كاملة، أضف بالضبط القسمين التاليين في النهاية
-                (لا تكتب أي نص بعدهما، والتزم بالتنسيق حرفياً):
+                (لا تكتب أي نص بعدهما، والتزم بالتنسيق حرفياً، ولا تضع علامات ```
+                حول الـ JSON إطلاقاً — اكتبه كسطر عادي فقط):
 
                 ### ANSWER_KEY_JSON ###
                 [{"q": "نص مختصر للسؤال", "a": "الإجابة النموذجية الصحيحة"}]
-                (اكتب عنصراً واحداً داخل القائمة لكل سؤال تقييمي فعلي ورد في الورقة)
+                (اكتب عنصراً واحداً داخل القائمة لكل سؤال تقييمي فعلي ورد في الورقة، وبدون أي ```)
 
                 ### KEY_VOCAB ###
                 اكتب هنا فقط ٤ إلى ٦ كلمات مفتاحية أساسية من محتوى الورقة، مفصولة بفواصل، بدون أي شرح إضافي.
