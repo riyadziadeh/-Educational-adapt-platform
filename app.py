@@ -8,6 +8,7 @@ import random
 import sqlite3
 import subprocess
 import tempfile
+import concurrent.futures
 from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
@@ -67,9 +68,16 @@ except ImportError:
     OPENPYXL_AVAILABLE = False
 
 # =========================================================================================
-# === إضافة جديدة (١): طبقة قاعدة بيانات لحفظ "ذاكرة الطالب" — تدعم الآن Supabase
-# (PostgreSQL) كتخزين دائم لا يُمسح عند إعادة النشر أو نوم التطبيق، مع رجوع تلقائي
-# لملف SQLite محلي مؤقت فقط إن لم يُضبط اتصال Supabase بعد (SUPABASE_DB_URL بالـ Secrets).
+# === طبقة قاعدة بيانات لحفظ "ذاكرة الطالب" — تدعم Supabase (PostgreSQL) كتخزين دائم
+# لا يُمسح عند إعادة النشر أو نوم التطبيق، مع رجوع تلقائي لملف SQLite محلي مؤقت فقط
+# إن لم يُضبط اتصال Supabase بعد (SUPABASE_DB_URL بالـ Secrets).
+#
+# === إصلاح أداء مهم (كان السبب الأكبر في بطء التطبيق) ===
+# كان الكود القديم يفتح اتصال Postgres/Supabase جديد بالكامل (مصافحة شبكة + SSL)
+# في كل استدعاء لأي دالة قاعدة بيانات — وهذا يحصل في كل ضغطة زر أو تغيير قائمة
+# منسدلة لأن ستريمليت يعيد تشغيل السكربت بالكامل (rerun). الآن الاتصال يُفتح مرة
+# واحدة فقط ويُعاد استخدامه عبر st.cache_resource، مع فحص خفيف (SELECT 1) للتأكد
+# أنه لا يزال حياً وإعادة إنشائه تلقائياً فقط إذا انقطع فعلاً.
 # =========================================================================================
 try:
     import psycopg2
@@ -87,12 +95,53 @@ USE_POSTGRES = bool(SUPABASE_DB_URL and PSYCOPG2_AVAILABLE)
 DB_PATH = "edu_adapt_data.db"  # يُستخدم فقط كتخزين احتياطي مؤقت (غير دائم على الاستضافة السحابية)
 
 
+@st.cache_resource(show_spinner=False)
+def _get_pg_connection():
+    """
+    يفتح اتصال Postgres/Supabase مرة واحدة فقط طوال عمر التطبيق (بفضل
+    st.cache_resource) بدل فتح اتصال جديد بكل استدعاء دالة. هذا هو الإصلاح
+    الأهم لبطء التطبيق: فتح اتصال جديد بكل rerun كان يضيف تأخيراً ملحوظاً
+    ومتكرراً بسبب مصافحة الشبكة وSSL مع خادم Supabase البعيد.
+    """
+    return psycopg2.connect(SUPABASE_DB_URL, sslmode="require")
+
+
+def _ensure_pg_alive(conn):
+    """يتحقق أن الاتصال المخزَّن ما زال حياً بفحص خفيف جداً، ولا يعيد إنشاءه إلا لو انقطع فعلاً."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        return conn
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        _get_pg_connection.clear()
+        return _get_pg_connection()
+
+
 def get_db():
     if USE_POSTGRES:
-        return psycopg2.connect(SUPABASE_DB_URL, sslmode="require")
+        conn = _get_pg_connection()
+        return _ensure_pg_alive(conn)
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def release_db(conn):
+    """
+    استخدم هذه الدالة بدل conn.close() مباشرة بعد كل استخدام لقاعدة البيانات.
+    بالنسبة لـ SQLite (تخزين مؤقت محلي) تُغلق الاتصال كالمعتاد لأنه رخيص الإنشاء.
+    بالنسبة لـ Postgres/Supabase لا تُغلق الاتصال المشترك المخزَّن مؤقتاً — إبقاؤه
+    مفتوحاً بين الاستدعاءات هو بيت القصيد من التخزين المؤقت أعلاه.
+    """
+    if not USE_POSTGRES:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def _q(sql):
@@ -156,7 +205,7 @@ def init_db():
         )
     """)
     conn.commit()
-    conn.close()
+    release_db(conn)
 
 
 DB_INIT_ERROR = None
@@ -201,7 +250,7 @@ def register_teacher(username, password):
     cur = conn.cursor()
     cur.execute(_q("SELECT teacher_name FROM teachers WHERE teacher_name = ?"), (username,))
     if cur.fetchone() is not None:
-        conn.close()
+        release_db(conn)
         return False, "اسم المستخدم هذا محجوز مسبقاً. الرجاء اختيار اسم آخر أو تسجيل الدخول."
 
     cur.execute(
@@ -209,7 +258,7 @@ def register_teacher(username, password):
         (username, _hash_pin(password), datetime.now().isoformat())
     )
     conn.commit()
-    conn.close()
+    release_db(conn)
     return True, "تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول به."
 
 
@@ -228,7 +277,7 @@ def login_teacher(username, password):
     cur = conn.cursor()
     cur.execute(_q("SELECT pin_hash FROM teachers WHERE teacher_name = ?"), (username,))
     row = _row_to_dict(cur, cur.fetchone())
-    conn.close()
+    release_db(conn)
 
     if row is None:
         return False, "لا يوجد حساب بهذا الاسم. الرجاء إنشاء حساب جديد أولاً."
@@ -242,7 +291,7 @@ def get_students(teacher_name):
     cur = conn.cursor()
     cur.execute(_q("SELECT * FROM students WHERE teacher_name = ? ORDER BY full_name"), (teacher_name,))
     rows = _rows_to_dicts(cur, cur.fetchall())
-    conn.close()
+    release_db(conn)
     return [
         {
             "id": r["id"], "full_name": r["full_name"], "grade": r["grade"],
@@ -261,7 +310,7 @@ def save_student(teacher_name, full_name, grade, system, category, condition_tex
         (teacher_name, full_name, grade, system, category, condition_text, datetime.now().isoformat())
     )
     conn.commit()
-    conn.close()
+    release_db(conn)
 
 
 def update_student(student_id, grade, system, category, condition_text):
@@ -272,7 +321,7 @@ def update_student(student_id, grade, system, category, condition_text):
         (grade, system, category, condition_text, student_id)
     )
     conn.commit()
-    conn.close()
+    release_db(conn)
 
 
 def save_worksheet_history(teacher_name, student_id, student_name, subject, grade, level, mode,
@@ -288,7 +337,7 @@ def save_worksheet_history(teacher_name, student_id, student_name, subject, grad
          adapted_text, answer_key_json, datetime.now().isoformat())
     )
     conn.commit()
-    conn.close()
+    release_db(conn)
 
 
 def get_student_history(teacher_name, student_id):
@@ -299,7 +348,7 @@ def get_student_history(teacher_name, student_id):
         (teacher_name, student_id)
     )
     rows = _rows_to_dicts(cur, cur.fetchall())
-    conn.close()
+    release_db(conn)
     return rows
 
 
@@ -639,9 +688,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # =========================================================================================
-# === إضافة جديدة (٥): تسجيل دخول مبسّط للمعلم عبر الشريط الجانبي، لفصل بيانات كل
-# معلم (طلابه وسجل أوراقه) عن غيره في نفس قاعدة البيانات المشتركة — يناسب استخدام
-# التطبيق من عدة معلمين في نفس المدرسة دون الحاجة لنظام حسابات معقّد. ===
+# === تسجيل دخول مبسّط للمعلم عبر الشريط الجانبي، لفصل بيانات كل معلم (طلابه وسجل
+# أوراقه) عن غيره في نفس قاعدة البيانات المشتركة — يناسب استخدام التطبيق من عدة
+# معلمين في نفس المدرسة دون الحاجة لنظام حسابات معقّد. ===
 # =========================================================================================
 with st.sidebar:
     st.markdown("### 👩‍🏫 حساب المعلم / Teacher Account")
@@ -708,9 +757,9 @@ with st.sidebar:
                         st.error(message)
 
 # =========================================================================================
-# === إضافة جديدة: إزالة الخلفية البيضاء من صورة الشعار تلقائياً وتحويلها لشفافة،
-# حتى يندمج الشعار بصرياً مع خلفية التطبيق بدل الظهور داخل مربع أبيض واضح الحواف.
-# النتيجة مخزّنة مؤقتاً (cache) حتى لا تُعاد المعالجة في كل rerun. ===
+# === إزالة الخلفية البيضاء من صورة الشعار تلقائياً وتحويلها لشفافة، حتى يندمج الشعار
+# بصرياً مع خلفية التطبيق بدل الظهور داخل مربع أبيض واضح الحواف. النتيجة مخزّنة
+# مؤقتاً (cache) حتى لا تُعاد المعالجة في كل rerun. ===
 # =========================================================================================
 @st.cache_data(show_spinner=False)
 def _load_logo_with_transparent_background(path, white_threshold=245):
@@ -765,9 +814,9 @@ st.markdown("""
 st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغة المختارة مع خيارات التحميل المتعددة.")
 
 # =========================================================================================
-# --- تعديل: الموسيقى الخلفية أصبحت اختيارية بالكامل (Opt-in) بدل التشغيل التلقائي ---
-# هذا مهم خصوصاً لأن جزءاً كبيراً من مستخدمي هذا النظام هم طلاب لديهم حساسية حسية
-# (مثل اضطراب طيف التوحد)، وصوت يعمل من تلقاء نفسه قد يكون مزعجاً أو مربكاً لهم.
+# --- الموسيقى الخلفية اختيارية بالكامل (Opt-in) بدل التشغيل التلقائي، لأن جزءاً كبيراً
+# من مستخدمي هذا النظام هم طلاب لديهم حساسية حسية (مثل اضطراب طيف التوحد)، وصوت يعمل
+# من تلقاء نفسه قد يكون مزعجاً أو مربكاً لهم. ---
 # =========================================================================================
 audio_file_path = None
 for music_name in ["music.mp3", "Music.mp3", "MUSIC.MP3", "music.WAV", "music.ogg"]:
@@ -783,6 +832,23 @@ with st.expander("🎵 إعدادات الصوت (اختياري) / Audio Settin
             st.audio(audio_file_path, format="audio/mp3", loop=True)
         else:
             st.audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", format="audio/mp3", loop=True)
+
+# =========================================================================================
+# === جديد: إعدادات الأداء والسرعة ===
+# توليد صور بالذكاء الاصطناعي (لغلاف العرض التقديمي وبطاقات PECS) كان يستدعي نموذج
+# توليد الصور من جوجل حتى 10 مرات متتالية لكل ورقة عمل — وهذا كان السبب الرئيسي
+# الثاني في بطء التطبيق (بعد اتصال قاعدة البيانات). الآن هذا اختياري ومطفأ افتراضياً؛
+# عند إطفائه تُستخدم أيقونات مرسومة محلياً فوراً (بدون أي اتصال إنترنت إضافي).
+# =========================================================================================
+with st.expander("⚙️ إعدادات الأداء والسرعة / Performance Settings"):
+    enable_ai_images = st.checkbox(
+        "توليد صور توضيحية بالذكاء الاصطناعي داخل عرض PowerPoint وبطاقات PECS "
+        "(شكل أجمل لكنه أبطأ بشكل ملحوظ لأنه يستدعي نموذج توليد الصور عدة مرات "
+        "لكل ورقة عمل). اتركه مطفأً للحصول على أسرع أداء ممكن — سيتم استخدام "
+        "أيقونات مرسومة محلياً بدلاً منها.",
+        value=False,
+        key="enable_ai_images_checkbox"
+    )
 
 st.markdown("---")
 
@@ -910,9 +976,9 @@ else:
     }
 
     # =====================================================================================
-    # === إضافة جديدة (٣): بنك إرشادات تكييف معتمدة لكل فئة حالة خاصة، تُحقن ضمن الطلب
-    # المرسل للذكاء الاصطناعي كأساس ومرجع أسلوبي، بدل الاعتماد فقط على وصف الحالة النصي.
-    # هذا يرفع جودة واتساق التكييف بدل أن يبدأ النموذج من الصفر في كل مرة. ===
+    # === بنك إرشادات تكييف معتمدة لكل فئة حالة خاصة، تُحقن ضمن الطلب المرسل للذكاء
+    # الاصطناعي كأساس ومرجع أسلوبي، بدل الاعتماد فقط على وصف الحالة النصي. هذا يرفع
+    # جودة واتساق التكييف بدل أن يبدأ النموذج من الصفر في كل مرة. ===
     # =====================================================================================
     ADAPTATION_TEMPLATE_HINTS = {
         "1. الإعاقات الحسية والجسدية / Sensory & Physical Disabilities":
@@ -1058,9 +1124,9 @@ else:
     st.markdown("---")
 
     # =====================================================================================
-    # === إضافة جديدة (١ + ٥): قسم إدارة الطلاب — اختيار طالب موجود أو إضافة طالب جديد،
-    # مربوط باسم المعلم المسجّل في الشريط الجانبي. عند اختيار طالب موجود، تُستخدم بياناته
-    # كقيم افتراضية لحقول الصف/النظام/الفئة/الحالة أدناه بدل البدء من الصفر في كل مرة. ===
+    # === قسم إدارة الطلاب — اختيار طالب موجود أو إضافة طالب جديد، مربوط باسم المعلم
+    # المسجّل في الشريط الجانبي. عند اختيار طالب موجود، تُستخدم بياناته كقيم افتراضية
+    # لحقول الصف/النظام/الفئة/الحالة أدناه بدل البدء من الصفر في كل مرة. ===
     # =====================================================================================
     current_teacher = (st.session_state.get("teacher_name") or "معلم_عام").strip()
 
@@ -1112,7 +1178,7 @@ else:
         condition_default_idx = _idx_or_default(condition_options, selected_student_record["condition"])
     selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة / Select Specific Condition:", condition_options, index=condition_default_idx)
 
-    # عرض شفاف لإرشاد التكييف المعتمد لهذه الفئة (إضافة ٣) حتى يطّلع عليه المعلم مباشرة
+    # عرض شفاف لإرشاد التكييف المعتمد لهذه الفئة حتى يطّلع عليه المعلم مباشرة
     st.caption(f"🗂️ إرشاد تكييف معتمد لهذه الفئة: {ADAPTATION_TEMPLATE_HINTS.get(selected_category, '')}")
 
     # ---------------- أزرار حفظ / تحديث بيانات الطالب (تُستخدم بعد اختيار كل الحقول أعلاه) ----------------
@@ -1129,9 +1195,8 @@ else:
             st.success("تم تحديث بيانات الطالب.")
 
     # =====================================================================================
-    # === إضافة جديدة (٤): تقرير متابعة الطالب — يعرض سجل كل أوراق العمل السابقة
-    # المرتبطة بطالب معيّن، مع إمكانية تصدير تقرير PDF من صفحة واحدة لمشاركته مع
-    # قسم الإرشاد الطلابي أو ولي الأمر. ===
+    # === تقرير متابعة الطالب — يعرض سجل كل أوراق العمل السابقة المرتبطة بطالب معيّن،
+    # مع إمكانية تصدير تقرير PDF من صفحة واحدة لمشاركته مع قسم الإرشاد الطلابي أو ولي الأمر. ===
     # =====================================================================================
     with st.expander("📊 تقرير متابعة الطالب / Student Progress Report"):
         if students_list:
@@ -1184,7 +1249,6 @@ else:
 
             if extracted_content.strip():
                 st.success(f"تم قراءة الملف بنجاح / File successfully read: {uploaded_file.name}")
-                # --- تعديل: إعلام المستخدم بوضوح إذا كان جزء من الملف سيُقص قبل إرساله للنموذج ---
                 if len(extracted_content) > MAX_INPUT_CHARS:
                     st.info(
                         f"⚠️ الملف المرفوع يحتوي على {len(extracted_content):,} حرفاً، وسيتم إرسال أول "
@@ -1197,7 +1261,7 @@ else:
             st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
 
     # =====================================================================================
-    # === تعديل: دعم اتجاه RTL الصحيح في مستندات Word (محاذاة يمين + خاصية bidi فعلية) ===
+    # === دعم كامل لاتجاه RTL الصحيح في مستندات Word (محاذاة يمين + خاصية bidi فعلية) ===
     # =====================================================================================
     def _set_paragraph_rtl(paragraph):
         """يضبط الفقرة لتكون بمحاذاة اليمين وباتجاه RTL فعلي (وليس فقط محاذاة بصرية)."""
@@ -1238,7 +1302,8 @@ else:
     def _draw_icon(kind, size=200, fg=(241, 196, 15, 255), bg=(16, 27, 45, 255)):
         """
         يرسم أيقونة بسيطة (شرح صوري/بصري) باستخدام PIL بدون أي اتصال بالإنترنت،
-        وتُستخدم كصور توضيحية داخل شرائح PowerPoint (بديل ذاتي التوليد بدل صور خارجية).
+        وتُستخدم كصور توضيحية داخل شرائح PowerPoint وبطاقات PECS — بديل فوري
+        وسريع جداً بدل الاعتماد الحصري على توليد صور الذكاء الاصطناعي.
         """
         img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
@@ -1280,7 +1345,11 @@ else:
         fill.solid()
         fill.fore_color.rgb = rgb
 
-    _ai_images_state = {"available": True}
+    # === إصلاح أداء: توليد صور الذكاء الاصطناعي أصبح مقيّداً بمفتاح enable_ai_images
+    # (من قسم "إعدادات الأداء والسرعة" أعلى الصفحة). إن كان مطفأً، تُتخطى استدعاءات
+    # الشبكة نهائياً بدل محاولتها ثم الفشل أو الانتظار — وهذا هو السبب الرئيسي الثاني
+    # في بطء توليد ملفات PowerPoint وبطاقات PECS في النسخة القديمة.
+    _ai_images_state = {"available": bool(enable_ai_images)}
 
     # نماذج الصور الحالية الفعّالة (نموذج Imagen القديم توقف رسمياً من جوجل بتاريخ ١٧/٨/٢٠٢٦)
     IMAGE_MODELS_TO_TRY = ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-2.5-flash-image"]
@@ -1328,8 +1397,8 @@ else:
         p.alignment = PP_ALIGN.RIGHT
 
     # =====================================================================================
-    # === تعديل: تقسيم أذكى لمحتوى الشرائح — يجمع حسب الفقرات الطبيعية (فواصل الأسطر
-    # الفارغة) بدل تقسيم كل 5 أسطر بشكل عشوائي قد يقطع سؤالاً أو فكرة في المنتصف ===
+    # === تقسيم أذكى لمحتوى الشرائح — يجمع حسب الفقرات الطبيعية (فواصل الأسطر الفارغة)
+    # بدل تقسيم كل 5 أسطر بشكل عشوائي قد يقطع سؤالاً أو فكرة في المنتصف ===
     # =====================================================================================
     def split_into_slide_blocks(text, max_chars_per_slide=420):
         raw_blocks = [b.strip() for b in text.split('\n\n') if b.strip()]
@@ -1553,10 +1622,18 @@ else:
             return None, f"تعذّر الاتصال بواجهة Canva: {e}"
 
     # =====================================================================================
-    # === تعديل جوهري: دعم كامل للنص العربي داخل PDF عبر تشكيل الحروف (arabic_reshaper)
-    # وترتيب الاتجاه (python-bidi) بالإضافة إلى خط Unicode عربي حقيقي بدل latin-1 القديم
-    # الذي كان يحذف كل الحروف العربية بصمت. إن لم يتوفر خط عربي في مجلد المشروع، يُنبَّه
-    # المستخدم بوضوح بدل إخراج ملف فارغ من المحتوى العربي دون علمه. ===
+    # === دعم كامل للنص العربي داخل PDF عبر تشكيل الحروف (arabic_reshaper) وترتيب
+    # الاتجاه (python-bidi) بالإضافة إلى خط Unicode عربي حقيقي بدل latin-1 القديم الذي
+    # كان يحذف كل الحروف العربية بصمت. إن لم يتوفر خط عربي في مجلد المشروع، يُنبَّه
+    # المستخدم بوضوح بدل إخراج ملف فارغ من المحتوى العربي دون علمه.
+    #
+    # === ملاحظة أداء مهمة ===
+    # هذه الدالة مخزّنة عبر st.cache_resource فتُنفَّذ مرة واحدة فقط طوال عمر التطبيق.
+    # لكن أول تشغيل بعد كل إعادة نشر (redeploy) سيبقى بطيئاً لأنه يثبّت مكتبات وينزّل
+    # خطاً من الإنترنت وقت التشغيل. للحصول على أسرع أداء ممكن من أول ثانية، يُنصح
+    # بإضافة 'arabic-reshaper' و 'python-bidi' إلى requirements.txt، ورفع ملف خط عربي
+    # (مثل Amiri-Regular.ttf) مباشرة داخل مجلد المشروع بدل الاعتماد على هذا التنزيل
+    # التلقائي — عندها ستُستخدم النسخة المحلية فوراً بدون أي تأخير شبكي.
     # =====================================================================================
     ARABIC_FONT_CANDIDATES = [
         "Amiri-Regular.ttf",
@@ -1612,7 +1689,7 @@ else:
                 cache_path = os.path.join(tempfile.gettempdir(), "AutoArabicFont.ttf")
                 if not os.path.exists(cache_path):
                     if REQUESTS_AVAILABLE:
-                        resp = requests.get(_FALLBACK_ARABIC_FONT_URL, timeout=25)
+                        resp = requests.get(_FALLBACK_ARABIC_FONT_URL, timeout=15)
                         resp.raise_for_status()
                         with open(cache_path, "wb") as f:
                             f.write(resp.content)
@@ -1735,8 +1812,8 @@ else:
             return io.BytesIO(pdf_output), warning
 
     # =====================================================================================
-    # === إضافة جديدة (٦): تصدير نموذج تصحيح تلقائي كملف Excel — يحتوي على السؤال
-    # والإجابة النموذجية المستخرجة من نفس استجابة الذكاء الاصطناعي، لتوفير وقت التصحيح. ===
+    # === تصدير نموذج تصحيح تلقائي كملف Excel — يحتوي على السؤال والإجابة النموذجية
+    # المستخرجة من نفس استجابة الذكاء الاصطناعي، لتوفير وقت التصحيح. ===
     # =====================================================================================
     def create_answer_key_excel(answer_key_list):
         if not OPENPYXL_AVAILABLE or not answer_key_list:
@@ -1769,10 +1846,10 @@ else:
         return bio
 
     # =====================================================================================
-    # === إضافة جديدة (٧): بطاقات PECS بصرية (صورة + كلمة) لأهم مفردات ورقة العمل،
-    # تُستخدم كدعم تواصل بصري إضافي حقيقي لطلاب اضطراب طيف التوحد وصعوبات التواصل،
-    # بالاعتماد على نفس بنية توليد الصور (_generate_ai_illustration) المستخدمة أصلاً
-    # في تصميم شرائح PowerPoint. ===
+    # === بطاقات PECS بصرية (صورة + كلمة) لأهم مفردات ورقة العمل، تُستخدم كدعم تواصل
+    # بصري إضافي حقيقي لطلاب اضطراب طيف التوحد وصعوبات التواصل، بالاعتماد على نفس بنية
+    # توليد الصور (_generate_ai_illustration) المستخدمة أصلاً في تصميم شرائح PowerPoint،
+    # مع رجوع فوري لأيقونة مرسومة محلياً إذا كان توليد صور الذكاء الاصطناعي مطفأً. ===
     # =====================================================================================
     def create_pecs_cards_pdf(vocab_words):
         if not PDF_AVAILABLE or not vocab_words:
@@ -1793,6 +1870,7 @@ else:
             (margin_x, margin_y + card_h + gap), (margin_x + card_w + gap, margin_y + card_h + gap),
         ]
 
+        icon_cycle = ["idea", "check", "star", "book", "target", "pencil"]
         words_to_use = vocab_words[:6]
         for i, word in enumerate(words_to_use):
             pos_idx = i % 4
@@ -1802,14 +1880,19 @@ else:
             pdf.rect(x, y, card_w, card_h)
 
             img_bio = _generate_ai_illustration(word)
-            if img_bio:
-                tmp_img_path = os.path.join(tempfile.gettempdir(), f"pecs_{i}.png")
-                with open(tmp_img_path, "wb") as f:
-                    f.write(img_bio.getvalue())
-                try:
-                    pdf.image(tmp_img_path, x=x + 5, y=y + 5, w=card_w - 10, h=card_h - 25)
-                except Exception:
-                    pass
+            if not img_bio:
+                # بديل فوري: أيقونة مرسومة محلياً بدل صورة الذكاء الاصطناعي (أسرع بكثير)
+                icon_kind = icon_cycle[i % len(icon_cycle)]
+                img_bio = _draw_icon(icon_kind, size=300,
+                                      fg=(0x10, 0x1B, 0x2D, 255), bg=(0xF1, 0xC4, 0x0F, 255))
+
+            tmp_img_path = os.path.join(tempfile.gettempdir(), f"pecs_{i}.png")
+            with open(tmp_img_path, "wb") as f:
+                f.write(img_bio.getvalue())
+            try:
+                pdf.image(tmp_img_path, x=x + 5, y=y + 5, w=card_w - 10, h=card_h - 25)
+            except Exception:
+                pass
 
             pdf.set_xy(x, y + card_h - 18)
             if font_path and shaping_ready:
@@ -1829,8 +1912,8 @@ else:
         return io.BytesIO(pdf_output), None
 
     # =====================================================================================
-    # === إضافة جديدة (٤ - جزء ثانٍ): توليد تقرير متابعة PDF من صفحة واحدة لطالب معيّن،
-    # يلخّص تاريخ أوراق العمل التي كُيّفت له (يُستخدم من قسم "تقرير متابعة الطالب" أعلاه). ===
+    # === توليد تقرير متابعة PDF من صفحة واحدة لطالب معيّن، يلخّص تاريخ أوراق العمل التي
+    # كُيّفت له (يُستخدم من قسم "تقرير متابعة الطالب" أعلاه). ===
     # =====================================================================================
     def create_progress_report_pdf(student_name, history_rows_list):
         if not PDF_AVAILABLE:
@@ -1866,9 +1949,9 @@ else:
         return io.BytesIO(pdf_output), None
 
     # =====================================================================================
-    # === إضافة جديدة (٦ + ٧ - جزء الفصل): تفصل استجابة الذكاء الاصطناعي الواحدة إلى
-    # ثلاثة أجزاء: نص ورقة العمل الرئيسي، نموذج الإجابات (JSON)، وقائمة المفردات
-    # الأساسية — دون الحاجة لاستدعاء إضافي منفصل للنموذج، توفيراً للوقت والتكلفة. ===
+    # === تفصل استجابة الذكاء الاصطناعي الواحدة إلى ثلاثة أجزاء: نص ورقة العمل الرئيسي،
+    # نموذج الإجابات (JSON)، وقائمة المفردات الأساسية — دون الحاجة لاستدعاء إضافي منفصل
+    # للنموذج، توفيراً للوقت والتكلفة. ===
     # =====================================================================================
     def parse_ai_sections(full_text):
         main_text = full_text
@@ -1909,8 +1992,8 @@ else:
         return main_text.strip(), answer_key, vocab_words
 
     # =====================================================================================
-    # === تعديل جوهري: توليد ملفات التحميل (Word/PPT/PDF) مرة واحدة فقط لكل نص مُكيَّف،
-    # بدل إعادة توليدها (بما فيها صور الذكاء الاصطناعي المكلفة) في كل rerun من ستريمليت ===
+    # === توليد ملفات التحميل (Word/PPT/PDF) مرة واحدة فقط لكل نص مُكيَّف، بدل إعادة
+    # توليدها في كل rerun من ستريمليت. ===
     # =====================================================================================
     if "adapted_text" not in st.session_state:
         st.session_state.adapted_text = None
@@ -1954,8 +2037,6 @@ else:
             trimmed_content = extracted_content[:MAX_INPUT_CHARS] if len(extracted_content) > MAX_INPUT_CHARS else extracted_content
             template_hint = ADAPTATION_TEMPLATE_HINTS.get(selected_category, "")
 
-            # تعليمات إضافية موحّدة تُطلب في نهاية كل استجابة لدعم نموذج التصحيح
-            # التلقائي (إضافة ٦) وبطاقات PECS البصرية (إضافة ٧) دون استدعاء إضافي للنموذج
             structured_output_instructions = """
                 بعد الانتهاء من كتابة ورقة العمل كاملة، أضف بالضبط القسمين التاليين في النهاية
                 (لا تكتب أي نص بعدهما، والتزم بالتنسيق حرفياً، ولا تضع علامات ```
@@ -2041,9 +2122,9 @@ else:
                     st.caption(f"تفاصيل تقنية: {last_error}")
 
     # =====================================================================================
-    # === إضافة جديدة (٢): خطوة مراجعة وتعديل يدوي قبل التصدير النهائي — النص لا يذهب
-    # مباشرة لتوليد الملفات، بل يُعرض كمسودة قابلة للتعديل، ولا تُنشأ ملفات Word/PPT/PDF
-    # إلا بعد ضغط المعلم على "اعتماد وتصدير". ===
+    # === خطوة مراجعة وتعديل يدوي قبل التصدير النهائي — النص لا يذهب مباشرة لتوليد
+    # الملفات، بل يُعرض كمسودة قابلة للتعديل، ولا تُنشأ ملفات Word/PPT/PDF إلا بعد
+    # ضغط المعلم على "اعتماد وتصدير". ===
     # =====================================================================================
     if st.session_state.adapted_text_draft and not st.session_state.adapted_text:
         st.markdown("### ✏️ مراجعة وتعديل الورقة قبل التصدير النهائي / Review & Edit Before Export")
@@ -2076,7 +2157,7 @@ else:
         st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
         st.markdown(st.session_state.adapted_text)
 
-        # --- إضافة جديدة (١): حفظ نسخة من هذه الورقة في سجل الطالب مرة واحدة فقط لكل نص معتمد ---
+        # --- حفظ نسخة من هذه الورقة في سجل الطالب مرة واحدة فقط لكل نص معتمد ---
         current_text = st.session_state.adapted_text
         if st.session_state.history_saved_for != current_text:
             _history_student_id = selected_student_record["id"] if selected_student_record else None
@@ -2094,14 +2175,27 @@ else:
         st.markdown("---")
         st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
 
-        # --- تعديل: توليد الملفات مرة واحدة فقط لكل نص مُكيَّف جديد، وتخزينها كبايتات جاهزة ---
+        # =====================================================================================
+        # === إصلاح أداء: توليد الملفات الخمسة (Word/PPT/PDF/Excel/PECS) بالتوازي بدل
+        # التسلسل. كانت تُبنى الواحد تلو الآخر فيتراكم الوقت (مجموع كل الملفات)؛ الآن
+        # تُبنى معاً في خيوط منفصلة فيصبح الوقت الكلي مساوياً تقريباً لأبطأ ملف واحد
+        # فقط بدل مجموعها كلها. الفرق يصبح كبيراً جداً خصوصاً مع تفعيل صور الذكاء
+        # الاصطناعي أو عند توليد PDF لأول مرة بعد إعادة النشر. ===
+        # =====================================================================================
         if st.session_state.generated_for_text != current_text:
             with st.spinner("جاري تجهيز ملفات Word و PowerPoint و PDF للتحميل (مرة واحدة فقط)..."):
-                word_bio = create_word_file(current_text)
-                ppt_bio = create_ppt_file(current_text)
-                pdf_bio, pdf_warning = create_pdf_file(current_text)
-                answer_key_excel_bio = create_answer_key_excel(st.session_state.answer_key)
-                pecs_pdf_bio, pecs_warning = create_pecs_cards_pdf(st.session_state.vocab_words)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    future_word = executor.submit(create_word_file, current_text)
+                    future_ppt = executor.submit(create_ppt_file, current_text)
+                    future_pdf = executor.submit(create_pdf_file, current_text)
+                    future_excel = executor.submit(create_answer_key_excel, st.session_state.answer_key)
+                    future_pecs = executor.submit(create_pecs_cards_pdf, st.session_state.vocab_words)
+
+                    word_bio = future_word.result()
+                    ppt_bio = future_ppt.result()
+                    pdf_bio, pdf_warning = future_pdf.result()
+                    answer_key_excel_bio = future_excel.result()
+                    pecs_pdf_bio, pecs_warning = future_pecs.result()
 
                 st.session_state.generated_files = {
                     "word": word_bio.getvalue() if word_bio else None,
@@ -2166,10 +2260,8 @@ else:
                 if files.get("pdf_warning"):
                     st.warning(files["pdf_warning"])
             else:
-                # نعرض سبب الفشل الحقيقي بدل عبارة عامة، حتى يعرف المستخدم بالضبط ما الناقص
                 st.error(files.get("pdf_warning") or "تصدير PDF غير متوفر حالياً لسبب غير معروف.")
 
-        # --- إضافة جديدة (٦ + ٧): صف تحميل إضافي لنموذج التصحيح وبطاقات PECS البصرية ---
         st.markdown("#### 🧩 أدوات إضافية / Extra Tools:")
         col4, col5 = st.columns(2)
         with col4:
