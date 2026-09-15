@@ -623,6 +623,51 @@ st.markdown(f"""
         box-shadow: 0px 8px 22px rgba(16,27,45,0.08);
     }}
 
+    /* ===== بطاقة عرض ورقة العمل المكيّفة: تباعد أسطر مريح + تمييز واضح للعناوين
+    والأسئلة الغامقة والفواصل بين التمارين، بدل نص متلاصق متعب للقراءة ===== */
+    div[class*="st-key-worksheet-output-card"] {{
+        background: rgba(255,255,255,0.78) !important;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(46,111,187,0.16);
+        border-radius: 24px !important;
+        padding: 30px 28px !important;
+        margin: 10px 0 24px 0 !important;
+        box-shadow: 0px 10px 26px rgba(16,27,45,0.08);
+    }}
+    div[class*="st-key-worksheet-output-card"] p {{
+        line-height: 2.1 !important;
+        font-size: 17px !important;
+        color: {NAVY_DARK};
+        margin-bottom: 14px !important;
+    }}
+    div[class*="st-key-worksheet-output-card"] strong {{
+        color: {NAVY_DARK} !important;
+        background: rgba(241,196,15,0.22);
+        padding: 2px 6px;
+        border-radius: 6px;
+    }}
+    div[class*="st-key-worksheet-output-card"] em {{
+        color: {BLUE_ACCENT} !important;
+    }}
+    div[class*="st-key-worksheet-output-card"] h1,
+    div[class*="st-key-worksheet-output-card"] h2,
+    div[class*="st-key-worksheet-output-card"] h3 {{
+        color: {BLUE_ACCENT} !important;
+        text-align: right;
+        margin-top: 10px !important;
+    }}
+    div[class*="st-key-worksheet-output-card"] hr {{
+        border: none;
+        border-top: 2px dashed rgba(46,111,187,0.35);
+        margin: 24px 0 !important;
+    }}
+    div[class*="st-key-worksheet-output-card"] ul,
+    div[class*="st-key-worksheet-output-card"] ol {{
+        line-height: 2 !important;
+        font-size: 16.5px !important;
+    }}
+
     .selection-summary {{
         background: linear-gradient(120deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
         color: {GOLD};
@@ -1271,15 +1316,66 @@ else:
         bidi.set(qn('w:val'), "1")
         pPr.append(bidi)
 
+    def _add_bold_line(doc, raw_line):
+        """يكتب سطراً كاملاً بخط عريض (يُستخدم لأسطر الأسئلة **...** في ملف Word)."""
+        p = doc.add_paragraph()
+        run = p.add_run(raw_line.strip("* ").strip())
+        run.bold = True
+        _set_paragraph_rtl(p)
+        return p
+
     def create_word_file(text):
+        """
+        === تحسين: يفسّر تنسيق Markdown الخفيف الذي يطلبه التطبيق من الذكاء الاصطناعي
+        (# عناوين، **أسئلة بخط عريض**، --- كفاصل بين التمارين) ويحوّله لتنسيق حقيقي
+        داخل ملف Word بدل نسخ النص كأسطر عادية متطابقة الشكل — لتظل الورقة واضحة
+        ومنظمة حتى بعد تحميلها وطباعتها، وليس فقط عند عرضها على الشاشة. ===
+        """
         if not DOCX_AVAILABLE:
             return None
         doc = Document()
         heading = doc.add_heading('ورقة العمل المطورة (التربية الخاصة) / Adapted Worksheet', 0)
         _set_paragraph_rtl(heading)
-        for line in text.split('\n'):
+
+        for raw_line in text.split('\n'):
+            line = raw_line.strip()
+
+            if not line:
+                doc.add_paragraph("")
+                continue
+
+            if line == "---":
+                divider = doc.add_paragraph("―" * 25)
+                _set_paragraph_rtl(divider)
+                continue
+
+            if line.startswith("### "):
+                h = doc.add_heading(line[4:].strip(), level=3)
+                _set_paragraph_rtl(h)
+                continue
+            if line.startswith("## "):
+                h = doc.add_heading(line[3:].strip(), level=2)
+                _set_paragraph_rtl(h)
+                continue
+            if line.startswith("# "):
+                h = doc.add_heading(line[2:].strip(), level=1)
+                _set_paragraph_rtl(h)
+                continue
+
+            if line.startswith("**") and line.endswith("**") and len(line) > 4:
+                _add_bold_line(doc, line)
+                continue
+
+            if line.startswith("*") and line.endswith("*") and not line.startswith("**"):
+                p = doc.add_paragraph()
+                run = p.add_run(line.strip("* "))
+                run.italic = True
+                _set_paragraph_rtl(p)
+                continue
+
             p = doc.add_paragraph(line)
             _set_paragraph_rtl(p)
+
         bio = io.BytesIO()
         doc.save(bio)
         bio.seek(0)
@@ -1992,6 +2088,54 @@ else:
         return main_text.strip(), answer_key, vocab_words
 
     # =====================================================================================
+    # === إصلاح: استدعاء احتياطي منفصل لاستخراج بنك الإجابات والمفردات ===
+    # المشكلة التي كانت تظهر ("نموذج التصحيح غير متوفر" و"بطاقات PECS غير متوفرة")
+    # سببها أن قسمي ### ANSWER_KEY_JSON ### و### KEY_VOCAB ### كانا يُطلبان في
+    # نهاية نفس الاستدعاء الرئيسي الذي يولّد ورقة العمل كاملة. عندما تكون ورقة العمل
+    # طويلة، كان النموذج يستهلك حد الأسطر المسموح (max_output_tokens) بالكامل في
+    # كتابة الورقة نفسها، فينقطع الرد قبل أن يصل لكتابة هذين القسمين إطلاقاً — والنتيجة
+    # بنك إجابات وقائمة مفردات فارغة دائماً مع الأوراق الطويلة.
+    # الحل: إن جاء الرد الرئيسي بدون هذين القسمين (أو أحدهما)، نطلبهما الآن باستدعاء
+    # ثانٍ صغير ومستقل مخصص لهذه المهمة فقط، بحد أسطر كافٍ خاص بها لا يتأثر بطول
+    # ورقة العمل نفسها. ===
+    # =====================================================================================
+    def _generate_structured_extras(main_text_for_extraction):
+        """
+        استدعاء احتياطي خفيف يطلب فقط بنك الإجابات وقائمة المفردات من نص ورقة عمل
+        جاهز بالفعل. يعيد tuple: (answer_key: list, vocab_words: list) — قوائم فارغة
+        عند أي فشل بدل رفع استثناء يوقف بقية سير العمل.
+        """
+        extras_prompt = f"""
+            بناءً على ورقة العمل التالية، نفّذ المطلوبين التاليين فقط بدون أي نص إضافي
+            قبلهما أو بعدهما أو بينهما، والتزم بالتنسيق حرفياً:
+
+            ### ANSWER_KEY_JSON ###
+            [{{"q": "نص مختصر للسؤال", "a": "الإجابة النموذجية الصحيحة"}}]
+            (عنصر واحد لكل سؤال تقييمي فعلي ورد في ورقة العمل أدناه، وبدون أي ```)
+
+            ### KEY_VOCAB ###
+            من ٤ إلى ٦ كلمات مفتاحية أساسية من محتوى ورقة العمل، مفصولة بفواصل فقط.
+
+            ورقة العمل:
+            {main_text_for_extraction[:6000]}
+        """
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.1-flash-lite",
+                contents=extras_prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.3,
+                    max_output_tokens=2000,
+                ),
+            )
+            if response and response.text:
+                _, extracted_answer_key, extracted_vocab_words = parse_ai_sections(response.text)
+                return extracted_answer_key, extracted_vocab_words
+        except Exception:
+            pass
+        return [], []
+
+    # =====================================================================================
     # === توليد ملفات التحميل (Word/PPT/PDF) مرة واحدة فقط لكل نص مُكيَّف، بدل إعادة
     # توليدها في كل rerun من ستريمليت. ===
     # =====================================================================================
@@ -2032,94 +2176,149 @@ else:
         if not extracted_content.strip():
             extracted_content = f"ورقة عمل عامة لمبحث {selected_subject} للصف {selected_grade} وفق النظام {selected_system}."
 
-        with st.spinner(" "):
+        trimmed_content = extracted_content[:MAX_INPUT_CHARS] if len(extracted_content) > MAX_INPUT_CHARS else extracted_content
+        template_hint = ADAPTATION_TEMPLATE_HINTS.get(selected_category, "")
 
-            trimmed_content = extracted_content[:MAX_INPUT_CHARS] if len(extracted_content) > MAX_INPUT_CHARS else extracted_content
-            template_hint = ADAPTATION_TEMPLATE_HINTS.get(selected_category, "")
+        # =================================================================================
+        # === جديد: إرشادات تنسيق صارمة تجعل ورقة العمل واضحة ومريحة للقراءة بدل نص
+        # متلاصق بلا تمييز بصري — هذا يُترجم مباشرة إلى Markdown يُعرض بشكل منسّق على
+        # الشاشة (عناوين، خط عريض للأسئلة، فواصل بين التمارين)، ويُستخدم لاحقاً أيضاً
+        # في تنسيق ملف Word المُصدَّر. ===
+        # =================================================================================
+        formatting_instructions = """
+            التزم حرفياً بقواعد التنسيق التالية أثناء كتابة ورقة العمل، لضمان وضوحها
+            الكامل للقارئ (معلم أو طالب) دون أي إرهاق بصري:
+            - اكتب عنوان ورقة العمل الرئيسي كعنوان Markdown من المستوى الأول: # العنوان.
+            - إن وجدت تعليمات عامة قبل الأسئلة (مثل "أجب عما يلي")، اكتبها بخط مائل
+              *هكذا* في سطر مستقل قبل أول سؤال.
+            - اكتب رقم وصياغة كل سؤال أو تمرين بخط عريض فقط، بالشكل: **السؤال ١: ...نص السؤال...**
+            - اترك سطراً فارغاً كاملاً بعد كل سؤال، ثم سطراً فارغاً آخر قبل بدء السؤال التالي.
+            - افصل بين كل سؤال/تمرين رئيسي والذي يليه بخط فاصل أفقي مستقل مكوّن من ثلاث
+              شرطات فقط (---) على سطر خاص به وحده.
+            - للاختيار من متعدد، اكتب كل خيار في سطر مستقل يبدأ بحرف أو رمز واضح
+              (أ- ، ب- ، ج- ...)، ولا تكتب الخيارات متلاصقة في سطر واحد.
+            - لا تكتب فقرات طويلة متراصة؛ اكسر كل فكرة أو خطوة في سطر أو فقرة قصيرة
+              مستقلة، مع مسافة بصرية واضحة بين الفقرات.
+            - إن وجدت مساحة مخصصة لكتابة إجابة الطالب، أشر إليها بوضوح بسطر يحتوي على
+              نقاط توضيحية (مثال: الإجابة: ......................................).
+        """
 
-            structured_output_instructions = """
-                بعد الانتهاء من كتابة ورقة العمل كاملة، أضف بالضبط القسمين التاليين في النهاية
-                (لا تكتب أي نص بعدهما، والتزم بالتنسيق حرفياً، ولا تضع علامات ```
-                حول الـ JSON إطلاقاً — اكتبه كسطر عادي فقط):
+        structured_output_instructions = """
+            بعد الانتهاء من كتابة ورقة العمل كاملة، أضف بالضبط القسمين التاليين في النهاية
+            (لا تكتب أي نص بعدهما، والتزم بالتنسيق حرفياً، ولا تضع علامات ```
+            حول الـ JSON إطلاقاً — اكتبه كسطر عادي فقط):
 
-                ### ANSWER_KEY_JSON ###
-                [{"q": "نص مختصر للسؤال", "a": "الإجابة النموذجية الصحيحة"}]
-                (اكتب عنصراً واحداً داخل القائمة لكل سؤال تقييمي فعلي ورد في الورقة، وبدون أي ```)
+            ### ANSWER_KEY_JSON ###
+            [{"q": "نص مختصر للسؤال", "a": "الإجابة النموذجية الصحيحة"}]
+            (اكتب عنصراً واحداً داخل القائمة لكل سؤال تقييمي فعلي ورد في الورقة، وبدون أي ```)
 
-                ### KEY_VOCAB ###
-                اكتب هنا فقط ٤ إلى ٦ كلمات مفتاحية أساسية من محتوى الورقة، مفصولة بفواصل، بدون أي شرح إضافي.
+            ### KEY_VOCAB ###
+            اكتب هنا فقط ٤ إلى ٦ كلمات مفتاحية أساسية من محتوى الورقة، مفصولة بفواصل، بدون أي شرح إضافي.
+        """
+
+        if generate_alternative:
+            prompt = f"""
+            أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
+            مطلوب تصميم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
+
+            إرشاد تكييف معتمد لهذه الفئة (استخدمه كأساس أسلوبي): {template_hint}
+
+            البيانات الأساسية:
+            - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
+            - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
+
+            محتوى الملف المرفق:
+            {trimmed_content}
+
+            اكتب ورقة العمل والأسئلة والتمارين والحلول بخطوات تفصيلية كاملة وواضحة باللغة العربية.
+
+            {formatting_instructions}
+
+            {structured_output_instructions}
+            """
+        else:
+            prompt = f"""
+            أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
+            مطلوب تنفيذ **تكييف وتطوير شامل ودقيق** لورقة العمل التالية لمبحث ({selected_subject}) بناءً على مستوى التكييف ({selected_level}) والحالة الخاصة ({selected_condition}).
+
+            إرشاد تكييف معتمد لهذه الفئة (استخدمه كأساس أسلوبي): {template_hint}
+
+            البيانات الأساسية:
+            - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
+            - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
+
+            محتوى الملف المرفق:
+            {trimmed_content}
+
+            قم بإعادة صياغة ورقة العمل وكتابة الأسئلة المعدلة، التمارين التدريبية، والحلول بشكل كامل ووافٍ دون أي نقصان وبأسلوب تربوي متميز.
+
+            {formatting_instructions}
+
+            {structured_output_instructions}
             """
 
-            if generate_alternative:
-                prompt = f"""
-                أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
-                مطلوب تصميم ورقة عمل بديلة مقترحة بالكامل مع **بنك أسئلة تقييمي تشخيصي مفصل يتضمن الأسئلة والحلول النموذجية** يناسب الحالة الخاصة ({selected_condition}) ومستوى التكييف ({selected_level}).
+        # =================================================================================
+        # === إصلاح أداء (سرعة مُدركة): توليد الرد بشكل متدفّق (Streaming) بدل انتظار
+        # النص كاملاً خلف سبينر صامت. النص يبدأ بالظهور على الشاشة فور وصول أول جزء منه
+        # من الذكاء الاصطناعي، فيشعر المستخدم أن التطبيق يعمل ويستجيب فوراً بدل الشك
+        # بأنه "علّق" لثوانٍ طويلة — وهذا فرق حقيقي في تجربة الاستخدام حتى لو ظل زمن
+        # التوليد الكلي نفسه تقريباً. ===
+        # =================================================================================
+        adapted_text_raw = None
+        models_to_try = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash"]
+        last_error = None
+        stream_placeholder = st.empty()
+        for model_name in models_to_try:
+            try:
+                full_text = ""
+                stream = client.models.generate_content_stream(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        max_output_tokens=8000,
+                    ),
+                )
+                for chunk in stream:
+                    chunk_text = getattr(chunk, "text", None)
+                    if chunk_text:
+                        full_text += chunk_text
+                        # نعرض النص أولاً بأول أثناء وصوله، مع إخفاء أي جزء من قسمي
+                        # الإجابات/المفردات إن بدأ الظهور قبل انتهاء البث بالكامل
+                        visible_text = full_text.split("### ANSWER_KEY_JSON ###")[0]
+                        stream_placeholder.markdown(visible_text)
+                if full_text.strip():
+                    adapted_text_raw = full_text
+                    break
+            except Exception as e:
+                last_error = e
+                time.sleep(1)
+                continue
+        stream_placeholder.empty()
 
-                إرشاد تكييف معتمد لهذه الفئة (استخدمه كأساس أسلوبي): {template_hint}
+        if adapted_text_raw:
+            main_text, answer_key, vocab_words = parse_ai_sections(adapted_text_raw)
 
-                البيانات الأساسية:
-                - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
-                - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
+            # --- إصلاح: لو الرد الرئيسي انقطع قبل أن يكتب بنك الإجابات أو المفردات
+            # (شائع في الأوراق الطويلة بسبب حد max_output_tokens)، نطلبهما الآن
+            # باستدعاء ثانٍ صغير مخصص بدل ترك الأدوات الإضافية فارغة دائماً. ---
+            if not answer_key or not vocab_words:
+                with st.spinner("جاري استكمال بنك الإجابات والمفردات..."):
+                    fallback_answer_key, fallback_vocab_words = _generate_structured_extras(main_text)
+                if not answer_key:
+                    answer_key = fallback_answer_key
+                if not vocab_words:
+                    vocab_words = fallback_vocab_words
 
-                محتوى الملف المرفق:
-                {trimmed_content}
-
-                اكتب ورقة العمل والأسئلة والتمارين والحلول بخطوات تفصيلية كاملة وواضحة باللغة العربية.
-
-                {structured_output_instructions}
-                """
-            else:
-                prompt = f"""
-                أنت خبير تربوي ومختص في مناهج التربية الخاصة والدمج في الأردن.
-                مطلوب تنفيذ **تكييف وتطوير شامل ودقيق** لورقة العمل التالية لمبحث ({selected_subject}) بناءً على مستوى التكييف ({selected_level}) والحالة الخاصة ({selected_condition}).
-
-                إرشاد تكييف معتمد لهذه الفئة (استخدمه كأساس أسلوبي): {template_hint}
-
-                البيانات الأساسية:
-                - الصف: {selected_grade} | النظام: {selected_system} | المادة: {selected_subject}
-                - لغة المخرجات: {selected_language} | المحافظة: {selected_gov} - الأردن
-
-                محتوى الملف المرفق:
-                {trimmed_content}
-
-                قم بإعادة صياغة ورقة العمل وكتابة الأسئلة المعدلة، التمارين التدريبية، والحلول بشكل كامل ووافٍ دون أي نقصان وبأسلوب تربوي متميز.
-
-                {structured_output_instructions}
-                """
-
-            adapted_text_raw = None
-            # ترتيب النماذج من الأحدث/الأرخص إلى الأقدم كخيار احتياطي أخير فقط
-            models_to_try = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash"]
-            last_error = None
-            for model_name in models_to_try:
-                try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            temperature=0.7,
-                            max_output_tokens=8000,
-                        ),
-                    )
-                    if response and response.text:
-                        adapted_text_raw = response.text
-                        break
-                except Exception as e:
-                    last_error = e
-                    time.sleep(1)
-                    continue
-
-            if adapted_text_raw:
-                main_text, answer_key, vocab_words = parse_ai_sections(adapted_text_raw)
-                st.session_state.adapted_text_draft = main_text
-                st.session_state.answer_key = answer_key
-                st.session_state.vocab_words = vocab_words
-                st.session_state.just_generated = True
-                st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully! راجعها أدناه قبل التصدير.")
-            else:
-                st.error("عذراً، تعذّر الاتصال بخدمة الذكاء الاصطناعي حالياً. يرجى المحاولة لاحقاً، أو التأكد من صلاحية مفتاح GOOGLE_API_KEY.")
-                if last_error:
-                    st.caption(f"تفاصيل تقنية: {last_error}")
+            st.session_state.adapted_text_draft = main_text
+            st.session_state.answer_key = answer_key
+            st.session_state.vocab_words = vocab_words
+            st.session_state.just_generated = True
+            st.success("تم تكييف ورقة العمل بنجاح تام / Adapted Successfully! راجعها أدناه قبل التصدير.")
+        else:
+            st.error("عذراً، تعذّر الاتصال بخدمة الذكاء الاصطناعي حالياً. يرجى المحاولة لاحقاً، أو التأكد من صلاحية مفتاح GOOGLE_API_KEY.")
+            if last_error:
+                st.caption(f"تفاصيل تقنية: {last_error}")
 
     # =====================================================================================
     # === خطوة مراجعة وتعديل يدوي قبل التصدير النهائي — النص لا يذهب مباشرة لتوليد
@@ -2155,7 +2354,15 @@ else:
             st.session_state.just_generated = False
 
         st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
-        st.markdown(st.session_state.adapted_text)
+        # === جديد: عرض الورقة داخل بطاقة منسّقة (تباعد أسطر مريح، عناوين وخط عريض
+        # وفواصل مميّزة بصرياً) بدل نص عادٍ متلاصق — التنسيق الفعلي (# و** و---) يأتي
+        # من تعليمات الذكاء الاصطناعي أعلاه؛ هذه البطاقة فقط تُخرجه بشكل مريح للعين. ===
+        try:
+            worksheet_output_card = st.container(key="worksheet-output-card")
+        except TypeError:
+            worksheet_output_card = st.container()
+        with worksheet_output_card:
+            st.markdown(st.session_state.adapted_text)
 
         # --- حفظ نسخة من هذه الورقة في سجل الطالب مرة واحدة فقط لكل نص معتمد ---
         current_text = st.session_state.adapted_text
