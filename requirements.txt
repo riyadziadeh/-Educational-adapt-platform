@@ -8,7 +8,5 @@ fpdf2
 arabic-reshaper
 python-bidi
 requests
-arabic-reshaper
-python-bidi
 psycopg2-binary
-Amiri-Regular.ttf
+openpyxl
