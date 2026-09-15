@@ -402,6 +402,24 @@ st.markdown(f"""
         display: none !important;
     }}
 
+    /* ===== تكبير وتمييز أيقونة فتح القائمة الجانبية (حساب المعلم) لتصبح واضحة
+    كزر حقيقي بدل سهم ">" صغير قد يمر دون ملاحظة ===== */
+    [data-testid="stSidebarCollapsedControl"] {{
+        background: linear-gradient(120deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%) !important;
+        border-radius: 14px !important;
+        padding: 6px !important;
+        box-shadow: 0px 4px 16px rgba(16,27,45,0.40) !important;
+    }}
+    [data-testid="stSidebarCollapsedControl"] svg {{
+        width: 26px !important;
+        height: 26px !important;
+        color: {GOLD} !important;
+        fill: {GOLD} !important;
+    }}
+    [data-testid="stSidebarNavCollapseIcon"], button[kind="header"] {{
+        color: {GOLD} !important;
+    }}
+
     /* خلفية متدرجة ناعمة حديثة بدل اللون الفلات القديم، مع طبقة زجاجية خفيفة */
     .stApp {{
         background: linear-gradient(160deg, #F4F8FF 0%, {NAVY_LIGHT} 45%, #E4ECFB 100%);
@@ -623,6 +641,24 @@ st.markdown(f"""
         box-shadow: 0px 8px 22px rgba(16,27,45,0.08);
     }}
 
+    /* ===== بطاقة "تحويل إلى امتحان تقييمي": بارزة بحدود ذهبية لتُلفت الانتباه كخطوة
+    اختيارية مهمة بعد التكييف مباشرة ===== */
+    div[class*="st-key-exam-conversion-card"] {{
+        background: rgba(255,255,255,0.7) !important;
+        backdrop-filter: blur(12px);
+        border: 2px solid {GOLD}aa;
+        border-radius: 22px !important;
+        padding: 18px 20px !important;
+        margin: 14px 0 20px 0 !important;
+        box-shadow: 0px 8px 22px rgba(241,196,15,0.18);
+    }}
+    div[class*="st-key-exam-conversion-card"] button {{
+        background: linear-gradient(120deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%) !important;
+        color: {WHITE} !important;
+        font-weight: 800 !important;
+        border: none !important;
+    }}
+
     /* ===== بطاقة عرض ورقة العمل المكيّفة: تباعد أسطر مريح + تمييز واضح للعناوين
     والأسئلة الغامقة والفواصل بين التمارين، بدل نص متلاصق متعب للقراءة ===== */
     div[class*="st-key-worksheet-output-card"] {{
@@ -841,6 +877,21 @@ with col_logo2:
     if not logo_loaded:
         st.warning("الرجاء التأكد من رفع صورة الأيقونة باسم new_logo.png في نفس مجلد المشروع.")
 
+# =========================================================================================
+# === جديد: إشارة واضحة ومكتوبة لمكان الدخول لحساب المعلم، بدل الاعتماد فقط على سهم
+# ">" الصغير الافتراضي لفتح القائمة الجانبية والذي قد لا يكون واضحاً لكل مستخدم. ===
+# =========================================================================================
+st.markdown(f"""
+    <div style="text-align:center; margin: 0 0 16px 0;">
+        <span style="background: rgba(241,196,15,0.22); color:{NAVY_DARK}; font-weight:800;
+        padding:10px 18px; border-radius:16px; font-size:14.5px; display:inline-block;
+        border: 1.5px solid {GOLD}aa;">
+            👤 حساب المعلم (تسجيل الدخول وإدارة الطلاب) موجود بالقائمة الجانبية —
+            اضغط الأيقونة 📂 المميّزة أعلى الزاوية لفتحها
+        </span>
+    </div>
+""", unsafe_allow_html=True)
+
 # شريط علوي كحلي بأسلوب "شريط البحث" الموجود في التطبيقات، للزينة وربط الهوية البصرية بالتصميم المطلوب
 st.markdown(f"""
     <div class="app-topbar">
@@ -1042,6 +1093,26 @@ else:
             "أضف تحدياً معرفياً إثرائياً اختيارياً بعد كل سؤال أساسي، اربط المحتوى بتطبيق واقعي أكثر "
             "تقدماً، وشجّع التفكير الناقد عبر أسئلة مفتوحة النهاية.",
     }
+
+    # === تعليمات تنسيق ثابتة (Markdown) تُستخدم عند توليد ورقة العمل وعند توليد
+    # الامتحان التقييمي لاحقاً على حد سواء، لضمان نفس مستوى الوضوح في الاثنين. ===
+    FORMATTING_INSTRUCTIONS = """
+        التزم حرفياً بقواعد التنسيق التالية أثناء الكتابة، لضمان الوضوح الكامل للقارئ
+        (معلم أو طالب) دون أي إرهاق بصري:
+        - اكتب العنوان الرئيسي كعنوان Markdown من المستوى الأول: # العنوان.
+        - إن وجدت تعليمات عامة قبل الأسئلة (مثل "أجب عما يلي")، اكتبها بخط مائل
+          *هكذا* في سطر مستقل قبل أول سؤال.
+        - اكتب رقم وصياغة كل سؤال أو تمرين بخط عريض فقط، بالشكل: **السؤال ١: ...نص السؤال...**
+        - اترك سطراً فارغاً كاملاً بعد كل سؤال، ثم سطراً فارغاً آخر قبل بدء السؤال التالي.
+        - افصل بين كل سؤال/تمرين رئيسي والذي يليه بخط فاصل أفقي مستقل مكوّن من ثلاث
+          شرطات فقط (---) على سطر خاص به وحده.
+        - للاختيار من متعدد، اكتب كل خيار في سطر مستقل يبدأ بحرف أو رمز واضح
+          (أ- ، ب- ، ج- ...)، ولا تكتب الخيارات متلاصقة في سطر واحد.
+        - لا تكتب فقرات طويلة متراصة؛ اكسر كل فكرة أو خطوة في سطر أو فقرة قصيرة
+          مستقلة، مع مسافة بصرية واضحة بين الفقرات.
+        - إن وجدت مساحة مخصصة لكتابة إجابة الطالب، أشر إليها بوضوح بسطر يحتوي على
+          نقاط توضيحية (مثال: الإجابة: ......................................).
+    """
 
     adaptation_levels_with_icons = [
         ("⚖️", "تكييف متوازن وشامل\nBalanced Adaptation"),
@@ -2178,30 +2249,7 @@ else:
 
         trimmed_content = extracted_content[:MAX_INPUT_CHARS] if len(extracted_content) > MAX_INPUT_CHARS else extracted_content
         template_hint = ADAPTATION_TEMPLATE_HINTS.get(selected_category, "")
-
-        # =================================================================================
-        # === جديد: إرشادات تنسيق صارمة تجعل ورقة العمل واضحة ومريحة للقراءة بدل نص
-        # متلاصق بلا تمييز بصري — هذا يُترجم مباشرة إلى Markdown يُعرض بشكل منسّق على
-        # الشاشة (عناوين، خط عريض للأسئلة، فواصل بين التمارين)، ويُستخدم لاحقاً أيضاً
-        # في تنسيق ملف Word المُصدَّر. ===
-        # =================================================================================
-        formatting_instructions = """
-            التزم حرفياً بقواعد التنسيق التالية أثناء كتابة ورقة العمل، لضمان وضوحها
-            الكامل للقارئ (معلم أو طالب) دون أي إرهاق بصري:
-            - اكتب عنوان ورقة العمل الرئيسي كعنوان Markdown من المستوى الأول: # العنوان.
-            - إن وجدت تعليمات عامة قبل الأسئلة (مثل "أجب عما يلي")، اكتبها بخط مائل
-              *هكذا* في سطر مستقل قبل أول سؤال.
-            - اكتب رقم وصياغة كل سؤال أو تمرين بخط عريض فقط، بالشكل: **السؤال ١: ...نص السؤال...**
-            - اترك سطراً فارغاً كاملاً بعد كل سؤال، ثم سطراً فارغاً آخر قبل بدء السؤال التالي.
-            - افصل بين كل سؤال/تمرين رئيسي والذي يليه بخط فاصل أفقي مستقل مكوّن من ثلاث
-              شرطات فقط (---) على سطر خاص به وحده.
-            - للاختيار من متعدد، اكتب كل خيار في سطر مستقل يبدأ بحرف أو رمز واضح
-              (أ- ، ب- ، ج- ...)، ولا تكتب الخيارات متلاصقة في سطر واحد.
-            - لا تكتب فقرات طويلة متراصة؛ اكسر كل فكرة أو خطوة في سطر أو فقرة قصيرة
-              مستقلة، مع مسافة بصرية واضحة بين الفقرات.
-            - إن وجدت مساحة مخصصة لكتابة إجابة الطالب، أشر إليها بوضوح بسطر يحتوي على
-              نقاط توضيحية (مثال: الإجابة: ......................................).
-        """
+        formatting_instructions = FORMATTING_INSTRUCTIONS
 
         structured_output_instructions = """
             بعد الانتهاء من كتابة ورقة العمل كاملة، أضف بالضبط القسمين التاليين في النهاية
@@ -2380,6 +2428,18 @@ else:
             st.session_state.history_saved_for = current_text
 
         st.markdown("---")
+
+        # === جديد: معاينة نهائية للورقة تظهر مباشرة قبل أزرار التحميل، بنفس التنسيق
+        # المنسّق أعلاه، حتى يراجعها المعلم آخر مرة قبل أن يحفظها بأي صيغة. ===
+        st.markdown("### 📄 معاينة نهائية للورقة قبل التحميل / Final Preview Before Download")
+        try:
+            worksheet_preview_before_download = st.container(key="worksheet-output-card-preview")
+        except TypeError:
+            worksheet_preview_before_download = st.container()
+        with worksheet_preview_before_download:
+            st.markdown(current_text)
+
+        st.markdown("---")
         st.subheader("📥 تحميل الملفات المطورة / Download Adapted Files:")
 
         # =====================================================================================
@@ -2491,6 +2551,89 @@ else:
                 )
             else:
                 st.info(files.get("pecs_warning") or "بطاقات PECS غير متوفرة لهذه الورقة.")
+
+        st.markdown("---")
+
+        # =====================================================================================
+        # === جديد: تحويل الورقة إلى امتحان تقييمي — أيقونة واضحة ومكتوب جنبها، تظهر بعد
+        # التكييف وقبل صندوق الشكر مباشرة، لتساعد المعلم يتأكد إن الطالب فهم المادة فعلاً
+        # ووصلته المعلومة، عبر توليد امتحان قصير مبني على نفس محتوى الورقة المكيّفة. ===
+        # =====================================================================================
+        if "exam_text" not in st.session_state:
+            st.session_state.exam_text = None
+        if "exam_for_text" not in st.session_state:
+            st.session_state.exam_for_text = None
+
+        try:
+            exam_section_card = st.container(key="exam-conversion-card")
+        except TypeError:
+            exam_section_card = st.container()
+
+        with exam_section_card:
+            st.markdown("#### 🧪📋 تحويل الورقة إلى امتحان تقييمي / Convert to Assessment Exam")
+            st.caption(
+                "استخدم هذا الخيار للتأكد أن الطالب فهم المادة فعلاً ووصلته المعلومة — يولّد "
+                "الذكاء الاصطناعي امتحاناً تقييمياً قصيراً (٥-٨ أسئلة) مبنياً على نفس محتوى "
+                "الورقة أعلاه، مع نموذج إجابة لكل سؤال."
+            )
+            convert_to_exam_clicked = st.button(
+                "🧪 حوّل هذه الورقة إلى امتحان تقييمي / Convert to Exam",
+                key="convert_to_exam_btn",
+                use_container_width=True
+            )
+
+        if convert_to_exam_clicked:
+            with st.spinner("جاري توليد الامتحان التقييمي..."):
+                exam_prompt = f"""
+                    أنت خبير تربوي متخصص في التقييم التربوي والتربية الخاصة.
+                    بناءً على ورقة العمل التالية (الصف: {selected_grade} | المادة: {selected_subject} |
+                    الحالة الخاصة: {selected_condition} | مستوى التكييف: {selected_level}),
+                    صمم امتحاناً تقييمياً قصيراً من ٥ إلى ٨ أسئلة هدفه التأكد الفعلي من أن الطالب
+                    فهم المفاهيم واستوعب المعلومة، وليس تكراراً حرفياً لنفس أسئلة الورقة. نوّع بين
+                    أسئلة اختيار من متعدد وأسئلة قصيرة مباشرة تناسب حالة الطالب ومستوى التكييف.
+
+                    {FORMATTING_INSTRUCTIONS}
+
+                    بعد كل سؤال، أضف نموذج الإجابة الصحيحة في سطر مستقل يبدأ بـ "الإجابة النموذجية:".
+
+                    محتوى ورقة العمل الأصلية:
+                    {current_text[:6000]}
+
+                    اكتب الامتحان مباشرة بدون أي مقدمات أو تعليق قبله.
+                """
+                try:
+                    exam_response = client.models.generate_content(
+                        model="gemini-3.1-flash-lite",
+                        contents=exam_prompt,
+                        config=types.GenerateContentConfig(temperature=0.6, max_output_tokens=3000),
+                    )
+                    if exam_response and exam_response.text:
+                        st.session_state.exam_text = exam_response.text.strip()
+                        st.session_state.exam_for_text = current_text
+                    else:
+                        st.warning("تعذّر توليد الامتحان التقييمي، يرجى المحاولة مرة أخرى.")
+                except Exception as e:
+                    st.warning(f"تعذّر توليد الامتحان التقييمي: {e}")
+
+        if st.session_state.exam_text and st.session_state.exam_for_text == current_text:
+            st.markdown("##### 📋 الامتحان التقييمي الناتج / Generated Assessment Exam:")
+            try:
+                exam_output_card = st.container(key="worksheet-output-card-exam")
+            except TypeError:
+                exam_output_card = st.container()
+            with exam_output_card:
+                st.markdown(st.session_state.exam_text)
+
+            if DOCX_AVAILABLE:
+                exam_word_bio = create_word_file(st.session_state.exam_text)
+                if exam_word_bio:
+                    st.download_button(
+                        label="تحميل الامتحان كملف Word (.docx)",
+                        data=exam_word_bio.getvalue(),
+                        file_name="Assessment_Exam.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key="download_exam_word_btn"
+                    )
 
         st.markdown("---")
         st.markdown(f"""
