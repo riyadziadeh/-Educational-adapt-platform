@@ -403,41 +403,42 @@ st.markdown(f"""
     }}
 
     /* ===== تكبير وتمييز أيقونة فتح القائمة الجانبية (حساب المعلم) لتصبح واضحة
-    كزر حقيقي بدل سهم ">" صغير قد يمر دون ملاحظة ===== */
+    كزر حقيقي بدل سهم ">" صغير قد يمر دون ملاحظة، مع إضافة نص "تسجيل الدخول وإدارة
+    الطلاب" بجانبها مباشرة. === إصلاح: الاعتماد السابق على سكربت JS (components.html)
+    لإضافة هذا النص لم يكن يعمل بثبات لأن الإطار (iframe) الخاص بالمكوّن قد لا يملك
+    وصولاً مضموناً لعنصر الصفحة الأصلية حسب بيئة الاستضافة. الحل الأكثر ثباتاً هو
+    إضافة النص كـ CSS Pseudo-element (::after) مباشرة داخل نفس زر ">>"، فيظهر دائماً
+    بمجرد تحميل الصفحة دون أي اعتماد على تنفيذ سكربت خارجي. ===== */
     [data-testid="stSidebarCollapsedControl"] {{
         background: linear-gradient(120deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%) !important;
         border-radius: 14px !important;
-        padding: 6px !important;
+        padding: 8px 14px !important;
         box-shadow: 0px 4px 16px rgba(16,27,45,0.40) !important;
         display: flex !important;
+        flex-direction: row-reverse !important;
         align-items: center !important;
+        gap: 8px !important;
+        width: auto !important;
+        min-width: unset !important;
     }}
     [data-testid="stSidebarCollapsedControl"] svg {{
-        width: 26px !important;
-        height: 26px !important;
+        width: 24px !important;
+        height: 24px !important;
         color: {GOLD} !important;
         fill: {GOLD} !important;
+        flex-shrink: 0 !important;
     }}
-    [data-testid="stSidebarNavCollapseIcon"], button[kind="header"] {{
+    [data-testid="stSidebarCollapsedControl"]::after {{
+        content: "تسجيل الدخول وإدارة الطلاب";
         color: {GOLD} !important;
-    }}
-
-    /* ===== نص "تسجيل الدخول وإدارة الطلاب" الذي تتم إضافته بجانب سهم ">>" مباشرة
-    عبر سكربت JS (انظر الأسفل) — تنسيق الشكل النهائي لهذا الوسم فقط ===== */
-    .edu-adapt-sidebar-label {{
-        color: {NAVY_DARK} !important;
         font-weight: 800 !important;
-        font-size: 13px !important;
-        margin-right: 10px !important;
+        font-size: 12.5px !important;
         white-space: nowrap !important;
         font-family: 'Cairo', -apple-system, sans-serif !important;
         direction: rtl !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        vertical-align: middle !important;
-        background: rgba(241,196,15,0.30) !important;
-        padding: 6px 12px !important;
-        border-radius: 12px !important;
+    }}
+    [data-testid="stSidebarNavCollapseIcon"], button[kind="header"] {{
+        color: {GOLD} !important;
     }}
 
     /* خلفية متدرجة ناعمة حديثة بدل اللون الفلات القديم، مع طبقة زجاجية خفيفة */
@@ -724,6 +725,70 @@ st.markdown(f"""
         font-size: 16.5px !important;
     }}
 
+    /* ===== إصلاح (٢): تنسيق مخصص ومرتّب لبطاقة "الامتحان التقييمي" الناتج بعد
+    التكييف — هوية بصرية خاصة (أخضر/تيل) تميّزه عن ورقة العمل الأصلية، مع تباعد
+    أسطر مريح للأسئلة، وإبراز واضح لكل "إجابة نموذجية" داخل صندوق مستقل ملوّن
+    (عبر تحويلها إلى Blockquote في المعالجة النصية أدناه) بدل أن تظهر مطابقة
+    لشكل نص السؤال العادي. ===== */
+    div[class*="st-key-exam-output-card"] {{
+        background: rgba(255,255,255,0.82) !important;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 2px solid rgba(46,187,109,0.35);
+        border-radius: 24px !important;
+        padding: 28px 26px !important;
+        margin: 10px 0 22px 0 !important;
+        box-shadow: 0px 10px 26px rgba(16,27,45,0.08);
+    }}
+    div[class*="st-key-exam-output-card"] p {{
+        line-height: 2.1 !important;
+        font-size: 16.5px !important;
+        color: {NAVY_DARK};
+        margin-bottom: 12px !important;
+    }}
+    div[class*="st-key-exam-output-card"] strong {{
+        color: {NAVY_DARK} !important;
+        background: rgba(241,196,15,0.22);
+        padding: 2px 6px;
+        border-radius: 6px;
+    }}
+    div[class*="st-key-exam-output-card"] em {{
+        color: #1F9D63 !important;
+    }}
+    div[class*="st-key-exam-output-card"] h1,
+    div[class*="st-key-exam-output-card"] h2,
+    div[class*="st-key-exam-output-card"] h3 {{
+        color: #1F9D63 !important;
+        text-align: right;
+        margin-top: 8px !important;
+    }}
+    div[class*="st-key-exam-output-card"] hr {{
+        border: none;
+        border-top: 2px dashed rgba(46,187,109,0.35);
+        margin: 22px 0 !important;
+    }}
+    div[class*="st-key-exam-output-card"] ul,
+    div[class*="st-key-exam-output-card"] ol {{
+        line-height: 2 !important;
+        font-size: 16px !important;
+    }}
+    /* صندوق "الإجابة النموذجية" المميّز — يأتي من تحويل السطر إلى Blockquote (>)
+    في دالة _format_exam_text_for_display حتى يبرز بصرياً عن نص السؤال */
+    div[class*="st-key-exam-output-card"] blockquote {{
+        background: rgba(46,187,109,0.12) !important;
+        border-right: 4px solid #1F9D63 !important;
+        border-left: none !important;
+        margin: 6px 0 20px 0 !important;
+        padding: 10px 16px !important;
+        border-radius: 10px !important;
+        font-weight: 700 !important;
+        color: #0F6B41 !important;
+    }}
+    div[class*="st-key-exam-output-card"] blockquote p {{
+        margin-bottom: 0 !important;
+        color: #0F6B41 !important;
+    }}
+
     .selection-summary {{
         background: linear-gradient(120deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
         color: {GOLD};
@@ -897,42 +962,10 @@ with col_logo2:
     if not logo_loaded:
         st.warning("الرجاء التأكد من رفع صورة الأيقونة باسم new_logo.png في نفس مجلد المشروع.")
 
-# =========================================================================================
-# === إصلاح (١): تمت إزالة صندوق الشرح الأصفر الكبير الذي كان يشرح مكان حساب
-# المعلم، واستُبدل بنص مختصر "تسجيل الدخول وإدارة الطلاب" يظهر مباشرة بجانب سهم
-# ">>" (زر فتح القائمة الجانبية) في الخانة البيضاء بالأعلى، بدل شغل مساحة كبيرة
-# من الصفحة. الحقن يتم عبر سكربت صغير يستهدف عنصر السهم في الصفحة الأصلية
-# ويضيف الوسم بجانبه مباشرة، مع مراقبة DOM (MutationObserver) حتى يبقى النص
-# ظاهراً حتى لو أعاد ستريمليت رسم الشريط العلوي بعد أي تفاعل. ===
-# =========================================================================================
-components.html("""
-<script>
-(function() {
-    function addSidebarLabel() {
-        try {
-            var doc = window.parent.document;
-            var control = doc.querySelector('[data-testid="stSidebarCollapsedControl"]');
-            if (!control) { return; }
-            if (control.parentElement && control.parentElement.querySelector('.edu-adapt-sidebar-label')) { return; }
-            var label = doc.createElement('span');
-            label.className = 'edu-adapt-sidebar-label';
-            label.innerText = 'تسجيل الدخول وإدارة الطلاب';
-            control.insertAdjacentElement('afterend', label);
-            if (control.parentElement) {
-                control.parentElement.style.display = 'flex';
-                control.parentElement.style.alignItems = 'center';
-            }
-        } catch (e) {}
-    }
-    addSidebarLabel();
-    try {
-        var observer = new MutationObserver(addSidebarLabel);
-        observer.observe(window.parent.document.body, { childList: true, subtree: true });
-    } catch (e) {}
-    setInterval(addSidebarLabel, 1200);
-})();
-</script>
-""", height=0, width=0)
+# === ملاحظة: إزالة صندوق الشرح الأصفر الكبير أصبحت نهائية — نص "تسجيل الدخول
+# وإدارة الطلاب" أصبح يظهر بجانب سهم ">>" مباشرة عبر CSS (::after) المُعرَّف أعلاه
+# في كتلة <style>، وهو أسلوب أكثر ثباتاً من الاعتماد على سكربت JS خارجي لأنه لا
+# يحتاج أي وصول لعناصر الصفحة الأصلية من داخل إطار iframe منفصل. ===
 
 # شريط علوي كحلي بأسلوب "شريط البحث" الموجود في التطبيقات، للزينة وربط الهوية البصرية بالتصميم المطلوب
 st.markdown(f"""
@@ -1460,6 +1493,16 @@ else:
             if line == "---":
                 divider = doc.add_paragraph("―" * 25)
                 _set_paragraph_rtl(divider)
+                continue
+
+            # === سطر "إجابة نموذجية" مميّز بصرياً (Blockquote) — يأتي فقط من ورقة
+            # الامتحان بعد معالجتها في _format_exam_text_for_display؛ هنا نزيل رموز
+            # الـ Markdown الخام (> و ** و ✅) ونكتبه كسطر عريض واحد مقروء في Word
+            # بدل أن تظهر رموز التنسيق حرفياً كنص غير مفهوم داخل المستند. ===
+            if line.startswith(">"):
+                clean_line = line.lstrip(">").strip()
+                clean_line = clean_line.replace("**", "")
+                _add_bold_line(doc, clean_line)
                 continue
 
             if line.startswith("### "):
@@ -2245,6 +2288,31 @@ else:
         return None, last_error
 
     # =====================================================================================
+    # === إصلاح (٢): تنسيق وترتيب ورقة الامتحان الناتجة بعد التكييف — بدل عرض نص
+    # الامتحان كما هو (حيث كانت أسطر "الإجابة النموذجية:" تظهر مطابقة تماماً لشكل
+    # نص السؤال ولا شيء يميّزها بصرياً)، تحوّل هذه الدالة كل سطر إجابة نموذجية إلى
+    # صيغة Blockquote (يبدأ بـ >) مع أيقونة ✅، لتظهر داخل صندوق أخضر مميّز بصرياً
+    # (التنسيق الفعلي للصندوق مُعرَّف في CSS ضمن st-key-exam-output-card أعلاه)،
+    # فيسهل على المعلم تمييز الإجابة الصحيحة فوراً عن نص السؤال نفسه دفعة واحدة. ===
+    # =====================================================================================
+    def _format_exam_text_for_display(raw_exam_text):
+        """
+        يمرّ على نص الامتحان سطراً سطراً؛ أي سطر يبدأ بعبارة "الإجابة النموذجية:"
+        يُحوَّل إلى Blockquote مميّز بصرياً (> ✅ **الإجابة النموذجية:** ...) بدل أن
+        يبقى سطراً عادياً مطابقاً لبقية النص. بقية الأسطر (الأسئلة والعنوان) تبقى
+        كما هي دون أي تعديل حتى لا نفسد تنسيق الذكاء الاصطناعي الأصلي.
+        """
+        formatted_lines = []
+        for raw_line in raw_exam_text.split("\n"):
+            line = raw_line.strip()
+            if line.startswith("الإجابة النموذجية:"):
+                answer_part = line[len("الإجابة النموذجية:"):].strip()
+                formatted_lines.append(f"> ✅ **الإجابة النموذجية:** {answer_part}")
+            else:
+                formatted_lines.append(raw_line)
+        return "\n".join(formatted_lines)
+
+    # =====================================================================================
     # === إصلاح: استدعاء احتياطي منفصل لاستخراج بنك الإجابات والمفردات ===
     # المشكلة التي كانت تظهر ("نموذج التصحيح غير متوفر" و"بطاقات PECS غير متوفرة")
     # سببها أن قسمي ### ANSWER_KEY_JSON ### و### KEY_VOCAB ### كانا يُطلبان في
@@ -2672,7 +2740,14 @@ else:
 
                     {FORMATTING_INSTRUCTIONS}
 
-                    بعد كل سؤال، أضف نموذج الإجابة الصحيحة في سطر مستقل يبدأ بـ "الإجابة النموذجية:".
+                    التزم أيضاً بما يلي خاص بالامتحان تحديداً:
+                    - ابدأ بعنوان رئيسي واحد فقط بصيغة Markdown من المستوى الأول، مثل:
+                      # امتحان تقييمي: {selected_subject}
+                    - رقّم الأسئلة بالتسلسل بدءاً من "السؤال ١" ثم "السؤال ٢" وهكذا دون تخطي رقم.
+                    - بعد كل سؤال وخياراته (إن وجدت)، أضف نموذج الإجابة الصحيحة في سطر مستقل
+                      يبدأ حرفياً بالعبارة "الإجابة النموذجية:" ثم نص الإجابة مباشرة بعدها في
+                      نفس السطر (بدون فقرة إضافية بعده).
+                    - لا تكرر عبارة "الإجابة النموذجية:" أكثر من مرة لكل سؤال.
 
                     محتوى ورقة العمل الأصلية:
                     {current_text[:6000]}
@@ -2683,7 +2758,7 @@ else:
                     exam_prompt, EXAM_MODELS_TO_TRY, temperature=0.6, max_output_tokens=3000
                 )
                 if exam_text_result:
-                    st.session_state.exam_text = exam_text_result
+                    st.session_state.exam_text = _format_exam_text_for_display(exam_text_result)
                     st.session_state.exam_for_text = current_text
                 else:
                     st.warning(
@@ -2697,7 +2772,7 @@ else:
         if st.session_state.exam_text and st.session_state.exam_for_text == current_text:
             st.markdown("##### 📋 الامتحان التقييمي الناتج / Generated Assessment Exam:")
             try:
-                exam_output_card = st.container(key="worksheet-output-card-exam")
+                exam_output_card = st.container(key="exam-output-card")
             except TypeError:
                 exam_output_card = st.container()
             with exam_output_card:
