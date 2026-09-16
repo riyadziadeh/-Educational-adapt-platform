@@ -697,12 +697,22 @@ st.markdown(f"""
         font-size: 17px !important;
         color: {NAVY_DARK};
         margin-bottom: 14px !important;
+        direction: rtl !important;
+        unicode-bidi: plaintext !important;
+        text-align: right !important;
     }}
+    /* === إصلاح: كانت خلفية ملوّنة (Highlight Box) توضع خلف كل نص **عريض**، وعندما
+    يكون هذا النص طويلاً ويلتف على أكثر من سطر (خصوصاً مع خلط عربي/أرقام/رموز
+    رياضية مثل a= 2 وb= -7)، كانت الخلفية تتقطّع بشكل غير متناسق مع التفاف السطر
+    فيظهر الشكل "ملخبطاً" وكأن ترتيب الكلمات تبدّل. الحل: إبقاء النص عريضاً وبلون
+    مميّز بدون أي صندوق خلفية يلتف معه، وهذا وحده يحل معظم المشكلة البصرية. ===== */
     div[class*="st-key-worksheet-output-card"] strong {{
-        color: {NAVY_DARK} !important;
-        background: rgba(241,196,15,0.22);
-        padding: 2px 6px;
-        border-radius: 6px;
+        color: {BLUE_ACCENT} !important;
+        font-weight: 900 !important;
+        background: none !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        unicode-bidi: plaintext !important;
     }}
     div[class*="st-key-worksheet-output-card"] em {{
         color: {BLUE_ACCENT} !important;
@@ -713,6 +723,7 @@ st.markdown(f"""
         color: {BLUE_ACCENT} !important;
         text-align: right;
         margin-top: 10px !important;
+        unicode-bidi: plaintext !important;
     }}
     div[class*="st-key-worksheet-output-card"] hr {{
         border: none;
@@ -723,6 +734,11 @@ st.markdown(f"""
     div[class*="st-key-worksheet-output-card"] ol {{
         line-height: 2 !important;
         font-size: 16.5px !important;
+        direction: rtl !important;
+        unicode-bidi: plaintext !important;
+    }}
+    div[class*="st-key-worksheet-output-card"] li {{
+        unicode-bidi: plaintext !important;
     }}
 
     /* ===== إصلاح (٢): تنسيق مخصص ومرتّب لبطاقة "الامتحان التقييمي" الناتج بعد
@@ -745,12 +761,17 @@ st.markdown(f"""
         font-size: 16.5px !important;
         color: {NAVY_DARK};
         margin-bottom: 12px !important;
+        direction: rtl !important;
+        unicode-bidi: plaintext !important;
+        text-align: right !important;
     }}
     div[class*="st-key-exam-output-card"] strong {{
-        color: {NAVY_DARK} !important;
-        background: rgba(241,196,15,0.22);
-        padding: 2px 6px;
-        border-radius: 6px;
+        color: #1F9D63 !important;
+        font-weight: 900 !important;
+        background: none !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        unicode-bidi: plaintext !important;
     }}
     div[class*="st-key-exam-output-card"] em {{
         color: #1F9D63 !important;
@@ -761,6 +782,7 @@ st.markdown(f"""
         color: #1F9D63 !important;
         text-align: right;
         margin-top: 8px !important;
+        unicode-bidi: plaintext !important;
     }}
     div[class*="st-key-exam-output-card"] hr {{
         border: none;
@@ -771,6 +793,11 @@ st.markdown(f"""
     div[class*="st-key-exam-output-card"] ol {{
         line-height: 2 !important;
         font-size: 16px !important;
+        direction: rtl !important;
+        unicode-bidi: plaintext !important;
+    }}
+    div[class*="st-key-exam-output-card"] li {{
+        unicode-bidi: plaintext !important;
     }}
     /* صندوق "الإجابة النموذجية" المميّز — يأتي من تحويل السطر إلى Blockquote (>)
     في دالة _format_exam_text_for_display حتى يبرز بصرياً عن نص السؤال */
@@ -783,6 +810,8 @@ st.markdown(f"""
         border-radius: 10px !important;
         font-weight: 700 !important;
         color: #0F6B41 !important;
+        direction: rtl !important;
+        unicode-bidi: plaintext !important;
     }}
     div[class*="st-key-exam-output-card"] blockquote p {{
         margin-bottom: 0 !important;
@@ -2791,26 +2820,31 @@ else:
 
         st.markdown("---")
         # =====================================================================================
-        # === إصلاح (١): تم ضغط صندوق الشكر الكبير (الذي كان يحتل مساحة كبيرة بحواف
-        # وعناوين وفوارق أسطر عديدة) إلى بطاقة واحدة مدمجة وأصغر بكثير، بسطر عنوان واحد
-        # وسطر فرعي واحد فقط، بدل عدة عناوين وفقرات منفصلة تجعلها "تظهر كبيرة ومزعجة". ===
+        # === إصلاح: الحجم السابق (بعد الضغط الشديد في المرة الماضية) أصبح صغيراً جداً
+        # وكل النصوص متلاصقة في سطر واحد. الآن حجم متوسط متوازن: كل سطر (العنوان،
+        # الجملة العربية، الفاصل، الجملة الإنجليزية) في سطر مستقل وواضح، بخط مقروء،
+        # مع مساحة داخلية كافية — بدون الرجوع لحجم الصندوق الضخم الأصلي. ===
         # =====================================================================================
         st.markdown(f"""
             <div class="animated-box" style="
                 background: linear-gradient(135deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
                 border: none;
-                padding: 12px 18px;
-                border-radius: 16px;
+                padding: 24px 20px;
+                border-radius: 20px;
                 text-align: center;
-                margin-top: 14px;
-                box-shadow: 0px 6px 16px rgba(16,27,45,0.28);
+                margin-top: 18px;
+                box-shadow: 0px 10px 26px rgba(16,27,45,0.30);
             ">
-                <span style="font-size: 18px; vertical-align: middle;">🎓✨</span>
-                <span style="font-weight: 900; color: {GOLD}; font-size: 14.5px; vertical-align: middle; margin-right: 6px;">
+                <div style="font-size: 30px; line-height: 1; margin-bottom: 8px;">🎓✨</div>
+                <div style="font-weight: 900; color: {GOLD}; font-size: 19px; line-height: 1.5;">
                     شكراً لاستخدامك Edu Worksheet Adapt
-                </span>
-                <div style="margin-top: 4px; color: {WHITE}; font-size: 11.5px; font-weight: 600; line-height: 1.5;">
-                    نحو تعليم أكثر شمولاً يليق بكل طالب 💙 &nbsp;•&nbsp; Thank you for using Edu Worksheet Adapt
+                </div>
+                <div style="height: 1px; background: rgba(255,255,255,0.25); margin: 14px auto; width: 50%;"></div>
+                <div style="color: {WHITE}; font-size: 14px; font-weight: 700; line-height: 1.7;">
+                    نحو تعليم أكثر شمولاً يليق بكل طالب 💙
+                </div>
+                <div style="margin-top: 6px; color: rgba(255,255,255,0.8); font-size: 12.5px; font-weight: 500;">
+                    Thank you for using Edu Worksheet Adapt
                 </div>
             </div>
         """, unsafe_allow_html=True)
