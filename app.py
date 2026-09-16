@@ -409,6 +409,8 @@ st.markdown(f"""
         border-radius: 14px !important;
         padding: 6px !important;
         box-shadow: 0px 4px 16px rgba(16,27,45,0.40) !important;
+        display: flex !important;
+        align-items: center !important;
     }}
     [data-testid="stSidebarCollapsedControl"] svg {{
         width: 26px !important;
@@ -418,6 +420,24 @@ st.markdown(f"""
     }}
     [data-testid="stSidebarNavCollapseIcon"], button[kind="header"] {{
         color: {GOLD} !important;
+    }}
+
+    /* ===== نص "تسجيل الدخول وإدارة الطلاب" الذي تتم إضافته بجانب سهم ">>" مباشرة
+    عبر سكربت JS (انظر الأسفل) — تنسيق الشكل النهائي لهذا الوسم فقط ===== */
+    .edu-adapt-sidebar-label {{
+        color: {NAVY_DARK} !important;
+        font-weight: 800 !important;
+        font-size: 13px !important;
+        margin-right: 10px !important;
+        white-space: nowrap !important;
+        font-family: 'Cairo', -apple-system, sans-serif !important;
+        direction: rtl !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        vertical-align: middle !important;
+        background: rgba(241,196,15,0.30) !important;
+        padding: 6px 12px !important;
+        border-radius: 12px !important;
     }}
 
     /* خلفية متدرجة ناعمة حديثة بدل اللون الفلات القديم، مع طبقة زجاجية خفيفة */
@@ -878,19 +898,41 @@ with col_logo2:
         st.warning("الرجاء التأكد من رفع صورة الأيقونة باسم new_logo.png في نفس مجلد المشروع.")
 
 # =========================================================================================
-# === جديد: إشارة واضحة ومكتوبة لمكان الدخول لحساب المعلم، بدل الاعتماد فقط على سهم
-# ">" الصغير الافتراضي لفتح القائمة الجانبية والذي قد لا يكون واضحاً لكل مستخدم. ===
+# === إصلاح (١): تمت إزالة صندوق الشرح الأصفر الكبير الذي كان يشرح مكان حساب
+# المعلم، واستُبدل بنص مختصر "تسجيل الدخول وإدارة الطلاب" يظهر مباشرة بجانب سهم
+# ">>" (زر فتح القائمة الجانبية) في الخانة البيضاء بالأعلى، بدل شغل مساحة كبيرة
+# من الصفحة. الحقن يتم عبر سكربت صغير يستهدف عنصر السهم في الصفحة الأصلية
+# ويضيف الوسم بجانبه مباشرة، مع مراقبة DOM (MutationObserver) حتى يبقى النص
+# ظاهراً حتى لو أعاد ستريمليت رسم الشريط العلوي بعد أي تفاعل. ===
 # =========================================================================================
-st.markdown(f"""
-    <div style="text-align:center; margin: 0 0 16px 0;">
-        <span style="background: rgba(241,196,15,0.22); color:{NAVY_DARK}; font-weight:800;
-        padding:10px 18px; border-radius:16px; font-size:14.5px; display:inline-block;
-        border: 1.5px solid {GOLD}aa;">
-            👤 حساب المعلم (تسجيل الدخول وإدارة الطلاب) موجود بالقائمة الجانبية —
-            اضغط الأيقونة 📂 المميّزة أعلى الزاوية لفتحها
-        </span>
-    </div>
-""", unsafe_allow_html=True)
+components.html("""
+<script>
+(function() {
+    function addSidebarLabel() {
+        try {
+            var doc = window.parent.document;
+            var control = doc.querySelector('[data-testid="stSidebarCollapsedControl"]');
+            if (!control) { return; }
+            if (control.parentElement && control.parentElement.querySelector('.edu-adapt-sidebar-label')) { return; }
+            var label = doc.createElement('span');
+            label.className = 'edu-adapt-sidebar-label';
+            label.innerText = 'تسجيل الدخول وإدارة الطلاب';
+            control.insertAdjacentElement('afterend', label);
+            if (control.parentElement) {
+                control.parentElement.style.display = 'flex';
+                control.parentElement.style.alignItems = 'center';
+            }
+        } catch (e) {}
+    }
+    addSidebarLabel();
+    try {
+        var observer = new MutationObserver(addSidebarLabel);
+        observer.observe(window.parent.document.body, { childList: true, subtree: true });
+    } catch (e) {}
+    setInterval(addSidebarLabel, 1200);
+})();
+</script>
+""", height=0, width=0)
 
 # شريط علوي كحلي بأسلوب "شريط البحث" الموجود في التطبيقات، للزينة وربط الهوية البصرية بالتصميم المطلوب
 st.markdown(f"""
@@ -2159,6 +2201,50 @@ else:
         return main_text.strip(), answer_key, vocab_words
 
     # =====================================================================================
+    # === إصلاح (٣): معالجة قوية لخطأ "503 UNAVAILABLE / High Demand" عند توليد الامتحان
+    # التقييمي وبنك الإجابات الاحتياطي. كان الكود القديم يستدعي نموذجاً واحداً فقط
+    # (gemini-3.1-flash-lite) بدون أي إعادة محاولة، فأي ضغط مؤقت على خادم جوجل كان
+    # يُفشل العملية فوراً برسالة خطأ تقنية غير مفهومة للمعلم ("This model is currently
+    # experiencing high demand..."). الآن نجرّب عدة نماذج بديلة بالتتابع، ولكل نموذج
+    # نعيد المحاولة عدة مرات مع فترة انتظار متصاعدة (Exponential Backoff) عند رصد
+    # خطأ 503/UNAVAILABLE/high demand تحديداً — بدل الاستسلام من أول محاولة واحدة. ===
+    # =====================================================================================
+    EXAM_MODELS_TO_TRY = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash"]
+
+    def _call_model_with_retry(prompt_text, models_list, temperature=0.6, max_output_tokens=3000, max_retries_per_model=2):
+        """
+        يحاول توليد المحتوى عبر أكثر من نموذج بالتتابع، ولكل نموذج يُعاد المحاولة عدة
+        مرات مع فترة انتظار متصاعدة عند مواجهة خطأ 503/ضغط مرتفع على الخادم تحديداً،
+        بدل الفشل من أول محاولة أو الاعتماد على نموذج واحد فقط.
+        يعيد tuple: (النص الناتج أو None, آخر خطأ حدث أو None).
+        """
+        last_error = None
+        for model_name in models_list:
+            for attempt in range(max_retries_per_model):
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt_text,
+                        config=types.GenerateContentConfig(
+                            temperature=temperature,
+                            max_output_tokens=max_output_tokens,
+                        ),
+                    )
+                    if response and response.text and response.text.strip():
+                        return response.text.strip(), None
+                except Exception as e:
+                    last_error = e
+                    err_str = str(e)
+                    if ("503" in err_str or "UNAVAILABLE" in err_str.upper()
+                            or "overloaded" in err_str.lower() or "high demand" in err_str.lower()):
+                        time.sleep((2 * (attempt + 1)) + random.uniform(0, 1))
+                        continue
+                    else:
+                        # خطأ غير مرتبط بالضغط (مثل مفتاح API غير صالح) — لا داعي لإعادة نفس النموذج
+                        break
+        return None, last_error
+
+    # =====================================================================================
     # === إصلاح: استدعاء احتياطي منفصل لاستخراج بنك الإجابات والمفردات ===
     # المشكلة التي كانت تظهر ("نموذج التصحيح غير متوفر" و"بطاقات PECS غير متوفرة")
     # سببها أن قسمي ### ANSWER_KEY_JSON ### و### KEY_VOCAB ### كانا يُطلبان في
@@ -2168,7 +2254,7 @@ else:
     # بنك إجابات وقائمة مفردات فارغة دائماً مع الأوراق الطويلة.
     # الحل: إن جاء الرد الرئيسي بدون هذين القسمين (أو أحدهما)، نطلبهما الآن باستدعاء
     # ثانٍ صغير ومستقل مخصص لهذه المهمة فقط، بحد أسطر كافٍ خاص بها لا يتأثر بطول
-    # ورقة العمل نفسها. ===
+    # ورقة العمل نفسها، ويستخدم الآن نفس آلية إعادة المحاولة وتبديل النماذج أعلاه. ===
     # =====================================================================================
     def _generate_structured_extras(main_text_for_extraction):
         """
@@ -2190,20 +2276,12 @@ else:
             ورقة العمل:
             {main_text_for_extraction[:6000]}
         """
-        try:
-            response = client.models.generate_content(
-                model="gemini-3.1-flash-lite",
-                contents=extras_prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.3,
-                    max_output_tokens=2000,
-                ),
-            )
-            if response and response.text:
-                _, extracted_answer_key, extracted_vocab_words = parse_ai_sections(response.text)
-                return extracted_answer_key, extracted_vocab_words
-        except Exception:
-            pass
+        extras_text, _extras_error = _call_model_with_retry(
+            extras_prompt, EXAM_MODELS_TO_TRY, temperature=0.3, max_output_tokens=2000
+        )
+        if extras_text:
+            _, extracted_answer_key, extracted_vocab_words = parse_ai_sections(extras_text)
+            return extracted_answer_key, extracted_vocab_words
         return [], []
 
     # =====================================================================================
@@ -2601,19 +2679,20 @@ else:
 
                     اكتب الامتحان مباشرة بدون أي مقدمات أو تعليق قبله.
                 """
-                try:
-                    exam_response = client.models.generate_content(
-                        model="gemini-3.1-flash-lite",
-                        contents=exam_prompt,
-                        config=types.GenerateContentConfig(temperature=0.6, max_output_tokens=3000),
+                exam_text_result, exam_error = _call_model_with_retry(
+                    exam_prompt, EXAM_MODELS_TO_TRY, temperature=0.6, max_output_tokens=3000
+                )
+                if exam_text_result:
+                    st.session_state.exam_text = exam_text_result
+                    st.session_state.exam_for_text = current_text
+                else:
+                    st.warning(
+                        "تعذّر توليد الامتحان التقييمي حالياً بسبب ضغط مرتفع مؤقت على خدمة الذكاء "
+                        "الاصطناعي (Google). تم تجربة عدة نماذج بديلة تلقائياً ولم تنجح أي منها. "
+                        "يرجى الانتظار دقيقة واحدة ثم الضغط على الزر مرة أخرى."
                     )
-                    if exam_response and exam_response.text:
-                        st.session_state.exam_text = exam_response.text.strip()
-                        st.session_state.exam_for_text = current_text
-                    else:
-                        st.warning("تعذّر توليد الامتحان التقييمي، يرجى المحاولة مرة أخرى.")
-                except Exception as e:
-                    st.warning(f"تعذّر توليد الامتحان التقييمي: {e}")
+                    if exam_error:
+                        st.caption(f"تفاصيل تقنية: {exam_error}")
 
         if st.session_state.exam_text and st.session_state.exam_for_text == current_text:
             st.markdown("##### 📋 الامتحان التقييمي الناتج / Generated Assessment Exam:")
@@ -2636,29 +2715,27 @@ else:
                     )
 
         st.markdown("---")
+        # =====================================================================================
+        # === إصلاح (١): تم ضغط صندوق الشكر الكبير (الذي كان يحتل مساحة كبيرة بحواف
+        # وعناوين وفوارق أسطر عديدة) إلى بطاقة واحدة مدمجة وأصغر بكثير، بسطر عنوان واحد
+        # وسطر فرعي واحد فقط، بدل عدة عناوين وفقرات منفصلة تجعلها "تظهر كبيرة ومزعجة". ===
+        # =====================================================================================
         st.markdown(f"""
             <div class="animated-box" style="
                 background: linear-gradient(135deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
                 border: none;
-                padding: 34px 22px;
-                border-radius: 22px;
+                padding: 12px 18px;
+                border-radius: 16px;
                 text-align: center;
-                margin-top: 24px;
-                box-shadow: 0px 12px 32px rgba(16,27,45,0.35);
+                margin-top: 14px;
+                box-shadow: 0px 6px 16px rgba(16,27,45,0.28);
             ">
-                <div style="font-size: 42px; line-height: 1; margin-bottom: 10px;">🎓✨</div>
-                <h3 style="margin: 0; font-weight: 900; line-height: 1.6; color: {GOLD}; font-size: 24px;">
-                    شكراً لاستخدامك<br>Edu Worksheet Adapt
-                </h3>
-                <p style="margin: 10px 0 0 0; font-weight: 700; color: {WHITE}; font-size: 16px; line-height: 1.8;">
-                    نحو تعليم أكثر شمولاً يليق بكل طالب 💙
-                </p>
-                <div style="height: 1px; background: rgba(255,255,255,0.28); margin: 20px auto; width: 55%;"></div>
-                <h4 style="margin: 0; font-weight: 800; color: {WHITE}; font-size: 17px;">
-                    Thank you for using Edu Worksheet Adapt
-                </h4>
-                <p style="margin: 6px 0 0 0; color: rgba(255,255,255,0.75); font-size: 13px; font-weight: 500;">
-                    Toward more inclusive education for every learner
-                </p>
+                <span style="font-size: 18px; vertical-align: middle;">🎓✨</span>
+                <span style="font-weight: 900; color: {GOLD}; font-size: 14.5px; vertical-align: middle; margin-right: 6px;">
+                    شكراً لاستخدامك Edu Worksheet Adapt
+                </span>
+                <div style="margin-top: 4px; color: {WHITE}; font-size: 11.5px; font-weight: 600; line-height: 1.5;">
+                    نحو تعليم أكثر شمولاً يليق بكل طالب 💙 &nbsp;•&nbsp; Thank you for using Edu Worksheet Adapt
+                </div>
             </div>
         """, unsafe_allow_html=True)
