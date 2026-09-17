@@ -10,3 +10,4 @@ python-bidi
 requests
 psycopg2-binary
 openpyxl
+gTTS
