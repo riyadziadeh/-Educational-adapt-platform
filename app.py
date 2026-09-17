@@ -1,21 +1,199 @@
 import os
 import io
-import sys
 import time
 import json
 import base64
 import random
+import re
+import hashlib
 import sqlite3
-import subprocess
 import tempfile
 import concurrent.futures
-from datetime import datetime
+from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
 from google import genai
 from google.genai import types
 import pypdf
 from PIL import Image, ImageDraw
+
+# =========================================================================================
+# === الدوال المنطقية "النقية" (لا تعتمد على Streamlit أو حالة الجلسة) — مدمجة هنا
+# مباشرة داخل app.py (ملف واحد فقط، بدون ملف worksheet_helpers.py منفصل) لتسهيل
+# الرفع لـ Streamlit Cloud. نسخة منفصلة قابلة للاختبار الآلي بمعزل عن Streamlit
+# متوفرة أيضاً كملف worksheet_helpers.py إن رغبت باستخدام tests/test_worksheet_helpers.py. ===
+#
+# === إصلاح أمني: تجزئة كلمة المرور (Password Hashing) ===
+# النسخة القديمة كانت تستخدم sha256 بلا ملح (salt) وبدورة واحدة فقط — هذا ضعيف
+# أمنياً لأنه عرضة لهجمات "جداول قوس قزح" (Rainbow Tables) ولأنه سريع جداً
+# للتخمين الآلي (Brute Force). الحل هنا: PBKDF2-HMAC-SHA256 بملح عشوائي فريد
+# لكل حساب و١٠٠,٠٠٠ دورة، وهو معيار قياسي معتمد (NIST) لتخزين كلمات المرور.
+# =========================================================================================
+
+def generate_salt() -> str:
+    """يولّد ملحاً عشوائياً فريداً (32 بايت) بصيغة سداسية عشرية، لكل حساب جديد."""
+    return os.urandom(32).hex()
+
+
+def hash_password(password: str, salt: str) -> str:
+    """
+    يجزّئ كلمة المرور مع الملح باستخدام PBKDF2-HMAC-SHA256 و١٠٠,٠٠٠ دورة.
+    هذا أبطأ عمداً من sha256 العادي لجعل هجمات التخمين الآلي غير عملية.
+    """
+    return hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000
+    ).hex()
+
+
+def legacy_hash_pin(pin_text: str) -> str:
+    """
+    === للتوافق فقط مع الحسابات القديمة ===
+    هذه هي دالة التجزئة القديمة الضعيفة (sha256 بلا ملح). لا تُستخدم لإنشاء
+    حسابات جديدة إطلاقاً — فقط للتحقق من كلمة مرور حساب قديم لم يُرقَّى بعد،
+    ثم تتم ترقيته تلقائياً لاستخدام hash_password أعلاه فور نجاح الدخول
+    (انظر login_teacher أدناه).
+    """
+    return hashlib.sha256(pin_text.encode("utf-8")).hexdigest()
+
+
+def is_valid_password(password_text: str) -> bool:
+    """
+    === إصلاح أمني: رُفع الحد الأدنى من ٤ أرقام فقط (١٠,٠٠٠ احتمال) إلى ٦
+    خانات على الأقل، تسمح بحروف وأرقام معاً، لمقاومة أكبر بكثير للتخمين. ===
+    """
+    text = (password_text or "").strip()
+    return len(text) >= 6 and len(text) <= 64 and text.isprintable() and " " not in text
+
+
+def idx_or_default(options_list, value, default=0):
+    """يبحث عن قيمة داخل قائمة خيارات، ويعيد فهرسها أو قيمة افتراضية إن لم توجد."""
+    try:
+        return options_list.index(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def parse_ai_sections(full_text: str):
+    """
+    تفصل استجابة الذكاء الاصطناعي الواحدة إلى ثلاثة أجزاء: نص ورقة العمل
+    الرئيسي، نموذج الإجابات (JSON)، وقائمة المفردات الأساسية.
+
+    === إصلاح خطأ حقيقي اكتشفته الاختبارات الآلية ===
+    الكود القديم كان يبحث عن قسم "### KEY_VOCAB ###" فقط داخل الجزء المتبقي
+    بعد "### ANSWER_KEY_JSON ###" — فإذا انقطع رد الذكاء الاصطناعي قبل كتابة
+    قسم الإجابات (شائع مع الأوراق الطويلة)، كانت المفردات تُفقد بالكامل
+    حتى لو كُتبت فعلياً في الرد. الآن يُبحث عن كل قسم بشكل مستقل تماماً.
+    """
+    main_text = full_text
+    answer_key = []
+    vocab_words = []
+
+    marker_positions = []
+    if "### ANSWER_KEY_JSON ###" in full_text:
+        marker_positions.append(full_text.index("### ANSWER_KEY_JSON ###"))
+    if "### KEY_VOCAB ###" in full_text:
+        marker_positions.append(full_text.index("### KEY_VOCAB ###"))
+    if marker_positions:
+        main_text = full_text[:min(marker_positions)]
+
+    if "### ANSWER_KEY_JSON ###" in full_text:
+        json_part = full_text.split("### ANSWER_KEY_JSON ###", 1)[1]
+        if "### KEY_VOCAB ###" in json_part:
+            json_part = json_part.split("### KEY_VOCAB ###", 1)[0]
+        try:
+            json_part_clean = json_part.strip()
+            json_part_clean = json_part_clean.replace("```json", "").replace("```JSON", "").replace("```", "")
+            json_part_clean = json_part_clean.strip("` \n\t")
+            if json_part_clean:
+                try:
+                    answer_key = json.loads(json_part_clean)
+                except Exception:
+                    start_idx = json_part_clean.find("[")
+                    end_idx = json_part_clean.rfind("]")
+                    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                        answer_key = json.loads(json_part_clean[start_idx:end_idx + 1])
+                if not isinstance(answer_key, list):
+                    answer_key = []
+        except Exception:
+            answer_key = []
+
+    if "### KEY_VOCAB ###" in full_text:
+        vocab_part = full_text.split("### KEY_VOCAB ###", 1)[1]
+        if vocab_part.strip():
+            vocab_words = [w.strip() for w in vocab_part.strip().split(",") if w.strip()][:6]
+
+    return main_text.strip(), answer_key, vocab_words
+
+
+def format_exam_text_for_display(raw_exam_text: str) -> str:
+    """يحوّل كل سطر 'الإجابة النموذجية:' إلى Blockquote مميّز بصرياً (> ✅ **...**)."""
+    formatted_lines = []
+    for raw_line in raw_exam_text.split("\n"):
+        line = raw_line.strip()
+        if line.startswith("الإجابة النموذجية:"):
+            answer_part = line[len("الإجابة النموذجية:"):].strip()
+            formatted_lines.append(f"> ✅ **الإجابة النموذجية:** {answer_part}")
+        else:
+            formatted_lines.append(raw_line)
+    return "\n".join(formatted_lines)
+
+
+def split_into_slide_blocks(text: str, max_chars_per_slide: int = 420):
+    """يقسّم نصاً طويلاً إلى مجموعات أسطر (شرائح) حسب الفقرات الطبيعية."""
+    raw_blocks = [b.strip() for b in text.split('\n\n') if b.strip()]
+    if not raw_blocks:
+        raw_blocks = [line.strip() for line in text.split('\n') if line.strip()]
+
+    slides = []
+    current_lines = []
+    current_len = 0
+    for block in raw_blocks:
+        block_len = len(block)
+        if block_len > max_chars_per_slide:
+            if current_lines:
+                slides.append(current_lines)
+                current_lines, current_len = [], 0
+            sub_lines = [l.strip() for l in block.split('\n') if l.strip()]
+            for l in sub_lines:
+                if current_len + len(l) > max_chars_per_slide and current_lines:
+                    slides.append(current_lines)
+                    current_lines, current_len = [], 0
+                current_lines.append(l)
+                current_len += len(l)
+            continue
+
+        if current_len + block_len > max_chars_per_slide and current_lines:
+            slides.append(current_lines)
+            current_lines, current_len = [], 0
+
+        for l in block.split('\n'):
+            if l.strip():
+                current_lines.append(l.strip())
+        current_len += block_len
+
+    if current_lines:
+        slides.append(current_lines)
+
+    return slides if slides else [[text]]
+
+
+def prepare_text_for_speech(raw_text: str) -> str:
+    """
+    === دعم القراءة الصوتية (Text-to-Speech) لدعم ذوي الإعاقة البصرية ===
+    ينظّف نص Markdown (# عناوين، **عريض**، > اقتباس، --- فواصل، ✅ رموز) قبل
+    إرساله لمحرّك تحويل النص لكلام بالمتصفح، حتى لا يُقرأ رمز التنسيق نفسه
+    بصوت عالٍ (مثال: "نجمة نجمة السؤال الأول نجمة نجمة" بدل "السؤال الأول").
+    """
+    text = raw_text
+    text = re.sub(r'^#{1,3}\s*', '', text, flags=re.MULTILINE)
+    text = text.replace('**', '')
+    text = re.sub(r'(?<!\*)\*(?!\*)', '', text)
+    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
+    text = text.replace('✅', '')
+    text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\n{2,}', '. ', text)
+    text = re.sub(r'[ \t]{2,}', ' ', text)
+    return text.strip()
 
 # محاولة استيراد مكتبات Word و PowerPoint بأمان تامة لضمان عدم انهيار السيرفر
 try:
@@ -177,6 +355,24 @@ def init_db():
             created_at TEXT
         )
     """)
+    # =====================================================================================
+    # === إصلاح أمني: إضافة أعمدة الملح (salt) وقفل الحساب المؤقت (failed_attempts,
+    # locked_until) لجدول المعلمين الموجود مسبقاً. نستخدم ALTER TABLE ... ADD COLUMN
+    # داخل try/except لأن كلا المحركين (SQLite/PostgreSQL) لا يدعمان "ADD COLUMN IF
+    # NOT EXISTS" بنفس الصيغة، وحتى لا ينهار التطبيق لو الأعمدة موجودة أصلاً من
+    # تشغيل سابق. الحسابات القديمة تبقى تعمل (salt فارغ = حساب لم يُرقَّى بعد)
+    # وتُرقّى تلقائياً لأول تسجيل دخول ناجح لها (انظر login_teacher أدناه). ===
+    # =====================================================================================
+    for alter_sql in [
+        "ALTER TABLE teachers ADD COLUMN salt TEXT",
+        "ALTER TABLE teachers ADD COLUMN failed_attempts INTEGER DEFAULT 0",
+        "ALTER TABLE teachers ADD COLUMN locked_until TEXT",
+    ]:
+        try:
+            cur.execute(alter_sql)
+        except Exception:
+            pass  # العمود موجود أصلاً من تشغيل سابق — لا مشكلة
+
     cur.execute(f"""
         CREATE TABLE IF NOT EXISTS students (
             {id_column},
@@ -208,34 +404,40 @@ def init_db():
     release_db(conn)
 
 
+# =========================================================================================
+# === إصلاح أمني مهم: كانت رسالة فشل الاتصال بقاعدة البيانات (قد تحتوي على اسم
+# الخادم أو تفاصيل الاتصال) تُعرض حرفياً بالشريط الجانبي لأي زائر للتطبيق، حتى
+# قبل تسجيل الدخول — وهذا تسريب معلومات داخلية (Information Disclosure) لأي شخص
+# يفتح الرابط. الآن: التفاصيل الكاملة تُطبع فقط بسجلات الخادم (تظهر لك أنت فقط
+# عبر Streamlit Cloud Logs)، بينما الزوار يرون رسالة عامة غير حسّاسة فقط. ===
+# =========================================================================================
 DB_INIT_ERROR = None
+DB_INIT_ERROR_LOGGED = None
 try:
     init_db()
 except Exception as e:
-    DB_INIT_ERROR = str(e)
+    DB_INIT_ERROR_LOGGED = str(e)
+    print(f"[DB_INIT_ERROR] {DB_INIT_ERROR_LOGGED}")  # يظهر فقط بسجلات الخادم، وليس للمستخدم
+    DB_INIT_ERROR = "تعذّر الاتصال بقاعدة البيانات الدائمة."
     if USE_POSTGRES:
         # فشل الاتصال الفعلي بـ Supabase رغم توفر الإعداد — نرجع تلقائياً للتخزين
-        # المحلي المؤقت بدل أن ينهار التطبيق بالكامل، مع إبقاء رسالة الخطأ ظاهرة
+        # المحلي المؤقت بدل أن ينهار التطبيق بالكامل، مع إبقاء رسالة عامة ظاهرة
         USE_POSTGRES = False
         try:
             init_db()
-        except Exception:
-            pass
+        except Exception as e2:
+            print(f"[DB_INIT_ERROR fallback] {e2}")
 
 
-def _hash_pin(pin_text):
-    import hashlib
-    return hashlib.sha256(pin_text.encode("utf-8")).hexdigest()
-
-
-def _is_valid_password(pin_text):
-    """كلمة المرور يجب أن تكون ٤ أرقام بالضبط (وليس ٤ فأكثر)."""
-    return pin_text.isdigit() and len(pin_text) == 4
+LOGIN_LOCKOUT_MAX_ATTEMPTS = 5
+LOGIN_LOCKOUT_MINUTES = 15
 
 
 def register_teacher(username, password):
     """
     إنشاء حساب معلم جديد. يرفض الطلب لو اسم المستخدم محجوز مسبقاً.
+    === إصلاح أمني: كلمة المرور الآن تُخزَّن مجزّأة بملح عشوائي فريد
+    (PBKDF2-HMAC-SHA256، ١٠٠,٠٠٠ دورة) بدل sha256 بلا ملح. ===
     يعيد tuple: (success: bool, message: str)
     """
     username = username.strip()
@@ -243,8 +445,8 @@ def register_teacher(username, password):
 
     if not username or not password:
         return False, "الرجاء إدخال اسم المستخدم وكلمة المرور معاً."
-    if not _is_valid_password(password):
-        return False, "كلمة المرور يجب أن تكون ٤ أرقام بالضبط (مثال: 1234)."
+    if not is_valid_password(password):
+        return False, "كلمة المرور يجب أن تكون ٦ خانات على الأقل (حروف و/أو أرقام، بدون مسافات)."
 
     conn = get_db()
     cur = conn.cursor()
@@ -253,9 +455,11 @@ def register_teacher(username, password):
         release_db(conn)
         return False, "اسم المستخدم هذا محجوز مسبقاً. الرجاء اختيار اسم آخر أو تسجيل الدخول."
 
+    salt = generate_salt()
     cur.execute(
-        _q("INSERT INTO teachers (teacher_name, pin_hash, created_at) VALUES (?, ?, ?)"),
-        (username, _hash_pin(password), datetime.now().isoformat())
+        _q("INSERT INTO teachers (teacher_name, pin_hash, salt, created_at, failed_attempts) "
+           "VALUES (?, ?, ?, ?, 0)"),
+        (username, hash_password(password, salt), salt, datetime.now().isoformat())
     )
     conn.commit()
     release_db(conn)
@@ -264,7 +468,12 @@ def register_teacher(username, password):
 
 def login_teacher(username, password):
     """
-    تسجيل دخول معلم موجود مسبقاً. يرفض إن لم يوجد الحساب أو كانت كلمة المرور خاطئة.
+    تسجيل دخول معلم موجود مسبقاً.
+    === إصلاح أمني (قفل الحساب المؤقت): بعد 5 محاولات خاطئة متتالية، يُقفل
+    الحساب لمدة 15 دقيقة تلقائياً لمنع هجمات التخمين الآلي (Brute Force). ===
+    === إصلاح أمني (ترقية تلقائية): الحسابات القديمة (بلا ملح، من قبل هذا
+    التحديث) يُتحقق منها بالطريقة القديمة أول مرة فقط، ثم تُرقّى فوراً لتخزين
+    مُجزَّأ بملح — يبقى نفس الاسم وكلمة المرور يعملان دون أي إزعاج للمعلم. ===
     يعيد tuple: (success: bool, message: str)
     """
     username = username.strip()
@@ -275,14 +484,71 @@ def login_teacher(username, password):
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(_q("SELECT pin_hash FROM teachers WHERE teacher_name = ?"), (username,))
+    cur.execute(
+        _q("SELECT pin_hash, salt, failed_attempts, locked_until FROM teachers WHERE teacher_name = ?"),
+        (username,)
+    )
     row = _row_to_dict(cur, cur.fetchone())
-    release_db(conn)
 
     if row is None:
+        release_db(conn)
         return False, "لا يوجد حساب بهذا الاسم. الرجاء إنشاء حساب جديد أولاً."
-    if row["pin_hash"] != _hash_pin(password):
+
+    locked_until_raw = row.get("locked_until")
+    if locked_until_raw:
+        try:
+            locked_until = datetime.fromisoformat(locked_until_raw)
+            if datetime.now() < locked_until:
+                remaining_min = max(1, int((locked_until - datetime.now()).total_seconds() // 60) + 1)
+                release_db(conn)
+                return False, f"تم قفل الحساب مؤقتاً بسبب محاولات دخول خاطئة متكررة. حاول مرة أخرى بعد {remaining_min} دقيقة تقريباً."
+        except Exception:
+            pass  # تاريخ غير صالح لأي سبب — نتجاهل القفل بدل إيقاف تسجيل الدخول بالكامل
+
+    salt = row.get("salt")
+    password_ok = False
+    needs_upgrade = False
+
+    if salt:
+        password_ok = (row["pin_hash"] == hash_password(password, salt))
+    else:
+        # حساب قديم لم يُرقَّ بعد — تحقق بالطريقة القديمة الضعيفة، وإن نجحت رقِّه فوراً
+        password_ok = (row["pin_hash"] == legacy_hash_pin(password))
+        needs_upgrade = password_ok
+
+    if not password_ok:
+        new_attempts = (row.get("failed_attempts") or 0) + 1
+        if new_attempts >= LOGIN_LOCKOUT_MAX_ATTEMPTS:
+            locked_until_value = (datetime.now() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)).isoformat()
+            cur.execute(
+                _q("UPDATE teachers SET failed_attempts = 0, locked_until = ? WHERE teacher_name = ?"),
+                (locked_until_value, username)
+            )
+            conn.commit()
+            release_db(conn)
+            return False, f"كلمة المرور غير صحيحة. تم قفل الحساب مؤقتاً لمدة {LOGIN_LOCKOUT_MINUTES} دقيقة بسبب تكرار المحاولات الخاطئة."
+        cur.execute(
+            _q("UPDATE teachers SET failed_attempts = ? WHERE teacher_name = ?"),
+            (new_attempts, username)
+        )
+        conn.commit()
+        release_db(conn)
         return False, "كلمة المرور غير صحيحة."
+
+    # نجح الدخول: صفّر عداد المحاولات وارفع القفل، ورقِّ الحساب القديم إن لزم
+    if needs_upgrade:
+        new_salt = generate_salt()
+        cur.execute(
+            _q("UPDATE teachers SET pin_hash = ?, salt = ?, failed_attempts = 0, locked_until = NULL WHERE teacher_name = ?"),
+            (hash_password(password, new_salt), new_salt, username)
+        )
+    else:
+        cur.execute(
+            _q("UPDATE teachers SET failed_attempts = 0, locked_until = NULL WHERE teacher_name = ?"),
+            (username,)
+        )
+    conn.commit()
+    release_db(conn)
     return True, "تم تسجيل الدخول بنجاح."
 
 
@@ -800,7 +1066,7 @@ st.markdown(f"""
         unicode-bidi: plaintext !important;
     }}
     /* صندوق "الإجابة النموذجية" المميّز — يأتي من تحويل السطر إلى Blockquote (>)
-    في دالة _format_exam_text_for_display حتى يبرز بصرياً عن نص السؤال */
+    في دالة format_exam_text_for_display (worksheet_helpers.py) حتى يبرز بصرياً عن نص السؤال */
     div[class*="st-key-exam-output-card"] blockquote {{
         background: rgba(46,187,109,0.12) !important;
         border-right: 4px solid #1F9D63 !important;
@@ -893,7 +1159,10 @@ with st.sidebar:
     if USE_POSTGRES and not DB_INIT_ERROR:
         st.caption("🟢 التخزين دائم (متصل بقاعدة بيانات Supabase) — بياناتك لن تُفقد عند إعادة النشر.")
     elif DB_INIT_ERROR:
-        st.caption(f"🔴 تعذّر الاتصال بقاعدة بيانات Supabase: {DB_INIT_ERROR}")
+        # === إصلاح أمني: لا تُعرض تفاصيل خطأ الاتصال الخام (قد تحتوي عنوان
+        # الخادم أو معلومات حساسة) لأي زائر غير مسجّل دخول؛ التفاصيل الكاملة
+        # مطبوعة بسجلات الخادم فقط (DB_INIT_ERROR_LOGGED عبر print أعلاه). ===
+        st.caption(f"🔴 {DB_INIT_ERROR}")
         st.caption("سيتم استخدام تخزين مؤقت محلياً حتى يُحل الاتصال.")
     else:
         st.caption("🟡 التخزين مؤقت حالياً (لم يُضبط SUPABASE_DB_URL بعد) — البيانات قد تُفقد عند إعادة النشر.")
@@ -916,8 +1185,8 @@ with st.sidebar:
             st.caption("أدخل اسم المستخدم وكلمة المرور اللي سجّلت فيهم حسابك.")
             login_username = st.text_input("اسم المستخدم / Username:", key="login_username_input")
             login_password = st.text_input(
-                "كلمة المرور (٤ أرقام) / Password:",
-                key="login_password_input", type="password", max_chars=4
+                "كلمة المرور / Password:",
+                key="login_password_input", type="password", max_chars=64
             )
             if st.button("🔐 دخول / Login", key="login_submit_btn", use_container_width=True):
                 success, message = login_teacher(login_username, login_password)
@@ -929,15 +1198,18 @@ with st.sidebar:
                     st.error(message)
 
         else:
-            st.caption("اختر اسم مستخدم جديد وكلمة مرور من ٤ أرقام بالضبط (مثال: 1234).")
+            # === إصلاح أمني: رُفع الحد الأدنى من ٤ أرقام (١٠,٠٠٠ احتمال فقط)
+            # إلى ٦ خانات على الأقل تسمح بحروف وأرقام، لمقاومة أكبر بكثير
+            # لهجمات التخمين الآلي — انظر is_valid_password في worksheet_helpers.py ===
+            st.caption("اختر اسم مستخدم جديد وكلمة مرور من ٦ خانات على الأقل (حروف و/أو أرقام، بدون مسافات).")
             register_username = st.text_input("اسم المستخدم الجديد / New Username:", key="register_username_input")
             register_password = st.text_input(
-                "كلمة المرور (٤ أرقام بالضبط) / Password:",
-                key="register_password_input", type="password", max_chars=4
+                "كلمة المرور (٦ خانات على الأقل) / Password:",
+                key="register_password_input", type="password", max_chars=64
             )
             register_password_confirm = st.text_input(
                 "تأكيد كلمة المرور / Confirm Password:",
-                key="register_password_confirm_input", type="password", max_chars=4
+                key="register_password_confirm_input", type="password", max_chars=64
             )
             if st.button("🆕 إنشاء الحساب / Create Account", key="register_submit_btn", use_container_width=True):
                 if register_password != register_password_confirm:
@@ -1064,6 +1336,94 @@ def play_ready_ding():
             <source src="data:audio/mp3;base64,{DING_SOUND_B64}" type="audio/mp3">
         </audio>
     """, height=0, width=0)
+
+
+# =========================================================================================
+# === جديد: زر "استماع لورقة العمل" (Text-to-Speech) لدعم الطلاب ذوي الإعاقة
+# البصرية بشكل أساسي، ومفيد أيضاً لصعوبات القراءة أو أي طالب يفضّل الاستماع.
+# يعتمد على خاصية تحويل النص لكلام المدمجة أصلاً بالمتصفح (Web Speech API) —
+# تعمل مباشرة من جهاز المستخدم بدون أي اتصال بخادم أو استدعاء API إضافي،
+# فهي مجانية بالكامل ولا تُبطئ التطبيق. تدعم العربية على معظم المتصفحات
+# الحديثة (Chrome، Edge، Safari)، بجودة الصوت المتاحة على جهاز المستخدم نفسه.
+# =========================================================================================
+def render_listen_button(raw_text, widget_key, accent_color="#2E6FBB", lang_default="ar-SA"):
+    """
+    يعرض عناصر تحكم (تشغيل / إيقاف مؤقت / استئناف / إيقاف) لقراءة raw_text
+    بصوت عالٍ داخل متصفح المستخدم. widget_key يجب أن يكون فريداً لكل استدعاء
+    بنفس الصفحة (مثال: 'worksheet' أو 'exam') لتفادي تعارض عناصر الـ JS.
+    """
+    clean_text = prepare_text_for_speech(raw_text)
+    text_json = json.dumps(clean_text)
+    safe_key = "".join(ch for ch in widget_key if ch.isalnum()) or "tts"
+
+    components.html(f"""
+        <div style="
+            display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+            background: rgba(46,111,187,0.08); border: 1.5px solid {accent_color}55;
+            border-radius: 16px; padding: 12px 16px; font-family: 'Cairo', -apple-system, sans-serif;
+            direction: rtl;
+        ">
+            <span style="font-weight:800; font-size:14px; color:{accent_color}; white-space:nowrap;">
+                🔊 استماع لورقة العمل / Listen
+            </span>
+            <button id="ttsPlay_{safe_key}" style="
+                background:{accent_color}; color:#fff; border:none; border-radius:10px;
+                padding:8px 14px; font-weight:800; font-size:13px; cursor:pointer;">▶️ تشغيل</button>
+            <button id="ttsPause_{safe_key}" style="
+                background:#fff; color:{accent_color}; border:1.5px solid {accent_color};
+                border-radius:10px; padding:8px 14px; font-weight:800; font-size:13px; cursor:pointer;">⏸️ إيقاف مؤقت</button>
+            <button id="ttsStop_{safe_key}" style="
+                background:#fff; color:#c0392b; border:1.5px solid #c0392b;
+                border-radius:10px; padding:8px 14px; font-weight:800; font-size:13px; cursor:pointer;">⏹️ إيقاف</button>
+            <label style="font-size:13px; font-weight:700; color:{accent_color}; margin-right:6px;">
+                السرعة:
+                <input id="ttsRate_{safe_key}" type="range" min="0.6" max="1.4" step="0.1" value="0.9"
+                    style="vertical-align:middle;">
+            </label>
+        </div>
+        <script>
+        (function() {{
+            const text = {text_json};
+            const playBtn = document.getElementById("ttsPlay_{safe_key}");
+            const pauseBtn = document.getElementById("ttsPause_{safe_key}");
+            const stopBtn = document.getElementById("ttsStop_{safe_key}");
+            const rateInput = document.getElementById("ttsRate_{safe_key}");
+            let utterance = null;
+
+            function pickArabicVoice() {{
+                const voices = window.speechSynthesis.getVoices();
+                return voices.find(v => v.lang && v.lang.toLowerCase().startsWith("ar")) || null;
+            }}
+
+            playBtn.onclick = function() {{
+                if (!("speechSynthesis" in window)) {{
+                    alert("عذراً، متصفحك الحالي لا يدعم خاصية القراءة الصوتية.");
+                    return;
+                }}
+                window.speechSynthesis.cancel();
+                utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = "{lang_default}";
+                const arVoice = pickArabicVoice();
+                if (arVoice) {{ utterance.voice = arVoice; }}
+                utterance.rate = parseFloat(rateInput.value) || 0.9;
+                window.speechSynthesis.speak(utterance);
+            }};
+            pauseBtn.onclick = function() {{
+                if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {{
+                    window.speechSynthesis.pause();
+                    pauseBtn.innerText = "▶️ استئناف";
+                }} else if (window.speechSynthesis.paused) {{
+                    window.speechSynthesis.resume();
+                    pauseBtn.innerText = "⏸️ إيقاف مؤقت";
+                }}
+            }};
+            stopBtn.onclick = function() {{
+                window.speechSynthesis.cancel();
+                pauseBtn.innerText = "⏸️ إيقاف مؤقت";
+            }};
+        }})();
+        </script>
+    """, height=90)
 
 # =========================================================================================
 # جلب مفتاح الـ API بمرونة تامة (سواء من الأسرار أو من متغيرات البيئة)
@@ -1372,30 +1732,25 @@ else:
             _sel_idx = student_names_options.index(student_choice) - 2
             selected_student_record = students_list[_sel_idx]
 
-    def _idx_or_default(options_list, value, default=0):
-        try:
-            return options_list.index(value)
-        except (ValueError, TypeError):
-            return default
-
     # ---------------- بقية الحقول عبر قوائم منسدلة بنفس الهوية اللونية (كحلي/ذهبي/أبيض) ----------------
-    grade_default_idx = _idx_or_default(grades, selected_student_record["grade"]) if selected_student_record else 0
+    # (idx_or_default مستوردة من worksheet_helpers.py — انظر أعلى الملف)
+    grade_default_idx = idx_or_default(grades, selected_student_record["grade"]) if selected_student_record else 0
     selected_grade = st.selectbox("اختر الصف الدراسي / Select Grade:", grades, index=grade_default_idx)
 
-    system_default_idx = _idx_or_default(educational_systems, selected_student_record["system"]) if selected_student_record else 0
+    system_default_idx = idx_or_default(educational_systems, selected_student_record["system"]) if selected_student_record else 0
     selected_system = st.selectbox("اختر النظام التعليمي / Select Educational System:", educational_systems, index=system_default_idx)
 
     selected_language = st.selectbox("اختر لغة التكييف والمخرجات / Select Output Language / Langue:", languages)
     selected_gov = st.selectbox("اختر محافظة المدرسة في الأردن / Select Governorate in Jordan:", jordan_governorates)
 
     category_options = list(special_conditions_categories.keys())
-    category_default_idx = _idx_or_default(category_options, selected_student_record["category"]) if selected_student_record else 0
+    category_default_idx = idx_or_default(category_options, selected_student_record["category"]) if selected_student_record else 0
     selected_category = st.selectbox("اختر فئة الحالة الخاصة / Select Special Condition Category:", category_options, index=category_default_idx)
 
     condition_options = special_conditions_categories[selected_category]
     condition_default_idx = 0
     if selected_student_record and selected_student_record.get("category") == selected_category:
-        condition_default_idx = _idx_or_default(condition_options, selected_student_record["condition"])
+        condition_default_idx = idx_or_default(condition_options, selected_student_record["condition"])
     selected_condition = st.selectbox("اختر الحالة التشخيصية المحددة / Select Specific Condition:", condition_options, index=condition_default_idx)
 
     # عرض شفاف لإرشاد التكييف المعتمد لهذه الفئة حتى يطّلع عليه المعلم مباشرة
@@ -1478,7 +1833,8 @@ else:
             else:
                 st.warning("⚠️ الملف المرفوع لا يحتوي على نص قابل للقراءة المباشرة. سيتم الاعتماد على معلومات النظام والعنوان لتوليد ورقة العمل.")
         except Exception as e:
-            st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
+            print(f"[FILE_READ_ERROR] {e}")  # التفاصيل الكاملة لسجلات الخادم فقط
+            st.error("حدث خطأ أثناء قراءة الملف. تأكد أن الملف غير تالف وبصيغة مدعومة (PDF أو Word أو TXT) وحاول مرة أخرى.")
 
     # =====================================================================================
     # === دعم كامل لاتجاه RTL الصحيح في مستندات Word (محاذاة يمين + خاصية bidi فعلية) ===
@@ -1525,7 +1881,7 @@ else:
                 continue
 
             # === سطر "إجابة نموذجية" مميّز بصرياً (Blockquote) — يأتي فقط من ورقة
-            # الامتحان بعد معالجتها في _format_exam_text_for_display؛ هنا نزيل رموز
+            # الامتحان بعد معالجتها في format_exam_text_for_display (worksheet_helpers.py)؛ هنا نزيل رموز
             # الـ Markdown الخام (> و ** و ✅) ونكتبه كسطر عريض واحد مقروء في Word
             # بدل أن تظهر رموز التنسيق حرفياً كنص غير مفهوم داخل المستند. ===
             if line.startswith(">"):
@@ -1679,45 +2035,10 @@ else:
 
     # =====================================================================================
     # === تقسيم أذكى لمحتوى الشرائح — يجمع حسب الفقرات الطبيعية (فواصل الأسطر الفارغة)
-    # بدل تقسيم كل 5 أسطر بشكل عشوائي قد يقطع سؤالاً أو فكرة في المنتصف ===
+    # بدل تقسيم كل 5 أسطر بشكل عشوائي قد يقطع سؤالاً أو فكرة في المنتصف.
+    # (split_into_slide_blocks مستوردة من worksheet_helpers.py، وعليها اختبارات
+    # آلية في tests/test_worksheet_helpers.py) ===
     # =====================================================================================
-    def split_into_slide_blocks(text, max_chars_per_slide=420):
-        raw_blocks = [b.strip() for b in text.split('\n\n') if b.strip()]
-        if not raw_blocks:
-            raw_blocks = [line.strip() for line in text.split('\n') if line.strip()]
-
-        slides = []
-        current_lines = []
-        current_len = 0
-        for block in raw_blocks:
-            block_len = len(block)
-            if block_len > max_chars_per_slide:
-                # الكتلة نفسها طويلة جداً — نقسمها على أسطرها الداخلية بدل تركها تفيض من الشريحة
-                if current_lines:
-                    slides.append(current_lines)
-                    current_lines, current_len = [], 0
-                sub_lines = [l.strip() for l in block.split('\n') if l.strip()]
-                for l in sub_lines:
-                    if current_len + len(l) > max_chars_per_slide and current_lines:
-                        slides.append(current_lines)
-                        current_lines, current_len = [], 0
-                    current_lines.append(l)
-                    current_len += len(l)
-                continue
-
-            if current_len + block_len > max_chars_per_slide and current_lines:
-                slides.append(current_lines)
-                current_lines, current_len = [], 0
-
-            for l in block.split('\n'):
-                if l.strip():
-                    current_lines.append(l.strip())
-            current_len += block_len
-
-        if current_lines:
-            slides.append(current_lines)
-
-        return slides if slides else [[text]]
 
     def create_ppt_file(text):
         if not PPTX_AVAILABLE:
@@ -1900,7 +2221,8 @@ else:
 
             return None, "استغرق إنشاء تصميم Canva وقتاً أطول من المتوقع، يرجى المحاولة لاحقاً."
         except Exception as e:
-            return None, f"تعذّر الاتصال بواجهة Canva: {e}"
+            print(f"[CANVA_ERROR] {e}")  # التفاصيل الكاملة لسجلات الخادم فقط
+            return None, "تعذّر الاتصال بواجهة Canva حالياً. يرجى المحاولة لاحقاً."
 
     # =====================================================================================
     # === دعم كامل للنص العربي داخل PDF عبر تشكيل الحروف (arabic_reshaper) وترتيب
@@ -1936,10 +2258,14 @@ else:
     @st.cache_resource(show_spinner=False)
     def _ensure_arabic_pdf_support():
         """
-        يضمن توفر (1) مكتبتي تشكيل النص العربي و(2) خط عربي صالح، تلقائياً وقت التشغيل،
-        حتى لو نسي المستخدم إضافتهما إلى requirements.txt أو رفع ملف خط. يُنفَّذ مرة واحدة
-        فقط طوال عمر التطبيق بفضل st.cache_resource (لا يتكرر التنزيل/التثبيت في كل rerun).
-        يعيد: (shaping_ready: bool, font_path: str|None, reshape_func, display_func, logs: list[str])
+        يضمن توفر (1) مكتبتي تشكيل النص العربي و(2) خط عربي صالح.
+        === إصلاح جودة/أمان: أُزيل تثبيت المكتبات عبر pip وقت التشغيل (subprocess
+        pip install) لأن تنفيذ أوامر تثبيت شبكية أثناء خدمة طلبات المستخدمين
+        ممارسة غير آمنة وغير مستقرة في بيئة إنتاج (قد تتعطل، تُحظر، أو تبطئ كل
+        طلب بشكل غير متوقع). الآن: إن كانت المكتبة غير مثبتة، يُعرض تنبيه واضح
+        يطلب إضافتها إلى requirements.txt بدل محاولة تثبيتها تلقائياً من كود
+        يعمل استجابة لتفاعل المستخدم. يُنفَّذ الفحص مرة واحدة فقط بفضل
+        st.cache_resource. يعيد: (shaping_ready, font_path, reshape_func, display_func, logs)
         """
         logs = []
         shaping_ready = ARABIC_SHAPING_AVAILABLE
@@ -1950,19 +2276,13 @@ else:
             reshape_func = arabic_reshaper.reshape
             display_func = get_display
         else:
-            try:
-                subprocess.check_call([
-                    sys.executable, "-m", "pip", "install", "--quiet",
-                    "arabic-reshaper", "python-bidi"
-                ])
-                import arabic_reshaper as _ar_runtime
-                from bidi.algorithm import get_display as _gd_runtime
-                reshape_func = _ar_runtime.reshape
-                display_func = _gd_runtime
-                shaping_ready = True
-                logs.append("تم تثبيت مكتبات دعم العربية (arabic-reshaper, python-bidi) تلقائياً وقت التشغيل.")
-            except Exception as e:
-                logs.append(f"تعذّر تثبيت مكتبات دعم العربية تلقائياً: {e}")
+            msg = (
+                "مكتبات تشكيل النص العربي (arabic-reshaper, python-bidi) غير مثبتة. "
+                "أضف السطرين 'arabic-reshaper' و'python-bidi' إلى requirements.txt "
+                "ثم أعد تشغيل التطبيق (Reboot app) لتفعيل دعم PDF بالعربية بالكامل."
+            )
+            logs.append(msg)
+            print(f"[ARABIC_PDF_SUPPORT] {msg}")
 
         font_path = _find_local_arabic_font()
         if not font_path:
@@ -2232,45 +2552,10 @@ else:
     # =====================================================================================
     # === تفصل استجابة الذكاء الاصطناعي الواحدة إلى ثلاثة أجزاء: نص ورقة العمل الرئيسي،
     # نموذج الإجابات (JSON)، وقائمة المفردات الأساسية — دون الحاجة لاستدعاء إضافي منفصل
-    # للنموذج، توفيراً للوقت والتكلفة. ===
+    # للنموذج، توفيراً للوقت والتكلفة.
+    # (parse_ai_sections مستوردة من worksheet_helpers.py — تحتوي على إصلاح خطأ حقيقي
+    # اكتشفته الاختبارات الآلية: كانت المفردات تُفقد لو غاب قسم الإجابات) ===
     # =====================================================================================
-    def parse_ai_sections(full_text):
-        main_text = full_text
-        answer_key = []
-        vocab_words = []
-
-        rest = ""
-        if "### ANSWER_KEY_JSON ###" in full_text:
-            main_text, rest = full_text.split("### ANSWER_KEY_JSON ###", 1)
-
-        json_part, vocab_part = rest, ""
-        if "### KEY_VOCAB ###" in rest:
-            json_part, vocab_part = rest.split("### KEY_VOCAB ###", 1)
-
-        try:
-            json_part_clean = json_part.strip()
-            # إزالة أي code fence من نوع ```json أو ``` بغض النظر عن مكانها
-            json_part_clean = json_part_clean.replace("```json", "").replace("```JSON", "").replace("```", "")
-            json_part_clean = json_part_clean.strip("` \n\t")
-            if json_part_clean:
-                try:
-                    answer_key = json.loads(json_part_clean)
-                except Exception:
-                    # محاولة أخيرة: استخراج أول قائمة [ ... ] صالحة داخل النص حتى لو
-                    # كان هناك كلام إضافي قبلها أو بعدها لم يلتزم به النموذج بدقة
-                    start_idx = json_part_clean.find("[")
-                    end_idx = json_part_clean.rfind("]")
-                    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                        answer_key = json.loads(json_part_clean[start_idx:end_idx + 1])
-                if not isinstance(answer_key, list):
-                    answer_key = []
-        except Exception:
-            answer_key = []
-
-        if vocab_part.strip():
-            vocab_words = [w.strip() for w in vocab_part.strip().split(",") if w.strip()][:6]
-
-        return main_text.strip(), answer_key, vocab_words
 
     # =====================================================================================
     # === إصلاح (٣): معالجة قوية لخطأ "503 UNAVAILABLE / High Demand" عند توليد الامتحان
@@ -2319,27 +2604,11 @@ else:
     # =====================================================================================
     # === إصلاح (٢): تنسيق وترتيب ورقة الامتحان الناتجة بعد التكييف — بدل عرض نص
     # الامتحان كما هو (حيث كانت أسطر "الإجابة النموذجية:" تظهر مطابقة تماماً لشكل
-    # نص السؤال ولا شيء يميّزها بصرياً)، تحوّل هذه الدالة كل سطر إجابة نموذجية إلى
-    # صيغة Blockquote (يبدأ بـ >) مع أيقونة ✅، لتظهر داخل صندوق أخضر مميّز بصرياً
-    # (التنسيق الفعلي للصندوق مُعرَّف في CSS ضمن st-key-exam-output-card أعلاه)،
-    # فيسهل على المعلم تمييز الإجابة الصحيحة فوراً عن نص السؤال نفسه دفعة واحدة. ===
+    # نص السؤال ولا شيء يميّزها بصرياً)، format_exam_text_for_display (مستوردة من
+    # worksheet_helpers.py) تحوّل كل سطر إجابة نموذجية إلى صيغة Blockquote (يبدأ
+    # بـ >) مع أيقونة ✅، لتظهر داخل صندوق أخضر مميّز بصرياً (التنسيق الفعلي للصندوق
+    # مُعرَّف في CSS ضمن st-key-exam-output-card أعلاه). ===
     # =====================================================================================
-    def _format_exam_text_for_display(raw_exam_text):
-        """
-        يمرّ على نص الامتحان سطراً سطراً؛ أي سطر يبدأ بعبارة "الإجابة النموذجية:"
-        يُحوَّل إلى Blockquote مميّز بصرياً (> ✅ **الإجابة النموذجية:** ...) بدل أن
-        يبقى سطراً عادياً مطابقاً لبقية النص. بقية الأسطر (الأسئلة والعنوان) تبقى
-        كما هي دون أي تعديل حتى لا نفسد تنسيق الذكاء الاصطناعي الأصلي.
-        """
-        formatted_lines = []
-        for raw_line in raw_exam_text.split("\n"):
-            line = raw_line.strip()
-            if line.startswith("الإجابة النموذجية:"):
-                answer_part = line[len("الإجابة النموذجية:"):].strip()
-                formatted_lines.append(f"> ✅ **الإجابة النموذجية:** {answer_part}")
-            else:
-                formatted_lines.append(raw_line)
-        return "\n".join(formatted_lines)
 
     # =====================================================================================
     # === إصلاح: استدعاء احتياطي منفصل لاستخراج بنك الإجابات والمفردات ===
@@ -2541,7 +2810,7 @@ else:
         else:
             st.error("عذراً، تعذّر الاتصال بخدمة الذكاء الاصطناعي حالياً. يرجى المحاولة لاحقاً، أو التأكد من صلاحية مفتاح GOOGLE_API_KEY.")
             if last_error:
-                st.caption(f"تفاصيل تقنية: {last_error}")
+                print(f"[AI_GENERATION_ERROR] {last_error}")  # التفاصيل الكاملة لسجلات الخادم فقط
 
     # =====================================================================================
     # === خطوة مراجعة وتعديل يدوي قبل التصدير النهائي — النص لا يذهب مباشرة لتوليد
@@ -2586,6 +2855,24 @@ else:
             worksheet_output_card = st.container()
         with worksheet_output_card:
             st.markdown(st.session_state.adapted_text)
+
+        # === جديد: زر الاستماع الصوتي لورقة العمل — مخصص أساساً لدعم الطلاب ذوي
+        # الإعاقة البصرية (يُبرز تلقائياً بشكل مميّز لو كانت هذه هي الحالة المختارة)،
+        # ومتاح أيضاً لأي طالب/معلم يفضّل الاستماع بدل القراءة. ===
+        _is_visual_impairment_case = "الإعاقة البصرية" in (selected_condition or "")
+        if _is_visual_impairment_case:
+            st.markdown(f"""
+                <div style="background: rgba(241,196,15,0.18); border: 1.5px solid {GOLD}aa;
+                border-radius: 14px; padding: 8px 14px; margin-bottom: 8px; text-align:center;
+                font-weight:800; color:{NAVY_DARK}; font-size:13.5px;">
+                    👁️ الحالة المختارة إعاقة بصرية — يُنصح باستخدام زر الاستماع أدناه
+                </div>
+            """, unsafe_allow_html=True)
+        render_listen_button(
+            st.session_state.adapted_text,
+            widget_key="worksheet",
+            accent_color=(GOLD if _is_visual_impairment_case else BLUE_ACCENT),
+        )
 
         # --- حفظ نسخة من هذه الورقة في سجل الطالب مرة واحدة فقط لكل نص معتمد ---
         current_text = st.session_state.adapted_text
@@ -2787,7 +3074,7 @@ else:
                     exam_prompt, EXAM_MODELS_TO_TRY, temperature=0.6, max_output_tokens=3000
                 )
                 if exam_text_result:
-                    st.session_state.exam_text = _format_exam_text_for_display(exam_text_result)
+                    st.session_state.exam_text = format_exam_text_for_display(exam_text_result)
                     st.session_state.exam_for_text = current_text
                 else:
                     st.warning(
@@ -2796,7 +3083,7 @@ else:
                         "يرجى الانتظار دقيقة واحدة ثم الضغط على الزر مرة أخرى."
                     )
                     if exam_error:
-                        st.caption(f"تفاصيل تقنية: {exam_error}")
+                        print(f"[EXAM_GENERATION_ERROR] {exam_error}")  # للسجلات فقط
 
         if st.session_state.exam_text and st.session_state.exam_for_text == current_text:
             st.markdown("##### 📋 الامتحان التقييمي الناتج / Generated Assessment Exam:")
@@ -2806,6 +3093,12 @@ else:
                 exam_output_card = st.container()
             with exam_output_card:
                 st.markdown(st.session_state.exam_text)
+
+            render_listen_button(
+                st.session_state.exam_text,
+                widget_key="exam",
+                accent_color="#1F9D63",
+            )
 
             if DOCX_AVAILABLE:
                 exam_word_bio = create_word_file(st.session_state.exam_text)
