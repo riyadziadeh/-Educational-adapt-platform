@@ -69,6 +69,16 @@ try:
 except ImportError:
     OPENPYXL_AVAILABLE = False
 
+# === إصلاح: ميزة "استمع للورقة" (تحويل نص لصوت) للطلاب ذوي الإعاقة البصرية — كانت
+# مطلوبة سابقاً لكن لم تكن موجودة فعلياً في الكود المنشور (تحقّقنا من الملف الأصلي
+# ومن كل نسخة سابقة ولم نجدها)، فتمت إضافتها الآن من الصفر عبر مكتبة gTTS (مجانية
+# ولا تحتاج مفتاح API، تعتمد فقط على اتصال إنترنت بسيط). ===
+try:
+    from gtts import gTTS
+    GTTS_AVAILABLE = True
+except ImportError:
+    GTTS_AVAILABLE = False
+
 # =========================================================================================
 # === سجلّ أخطاء داخلي (Server-side logging) ===
 # أي تفصيل خطأ حسّاس (رسالة اتصال قاعدة بيانات، استثناء داخلي من مكتبة، إلخ) يُطبع هنا
@@ -1751,13 +1761,24 @@ if __name__ == "__main__":
 
         def create_word_file(text):
             """
+            غلاف آمن: يلتقط أي استثناء غير متوقع أثناء بناء ملف Word بدل ترك التطبيق
+            ينهار بالكامل (نفس مبدأ الحماية المطبّق على PDF وPowerPoint). ===
+            """
+            if not DOCX_AVAILABLE:
+                return None
+            try:
+                return _create_word_file_impl(text)
+            except Exception as e:
+                log_internal_error("فشل توليد ملف Word", e)
+                return None
+
+        def _create_word_file_impl(text):
+            """
             === تحسين: يفسّر تنسيق Markdown الخفيف الذي يطلبه التطبيق من الذكاء الاصطناعي
             (# عناوين، **أسئلة بخط عريض**، --- كفاصل بين التمارين) ويحوّله لتنسيق حقيقي
             داخل ملف Word بدل نسخ النص كأسطر عادية متطابقة الشكل — لتظل الورقة واضحة
             ومنظمة حتى بعد تحميلها وطباعتها، وليس فقط عند عرضها على الشاشة. ===
             """
-            if not DOCX_AVAILABLE:
-                return None
             doc = Document()
             heading = doc.add_heading('ورقة العمل المطورة (التربية الخاصة) / Adapted Worksheet', 0)
             _set_paragraph_rtl(heading)
@@ -1815,6 +1836,42 @@ if __name__ == "__main__":
             doc.save(bio)
             bio.seek(0)
             return bio
+
+        # =====================================================================================
+        # === ميزة "استمع للورقة" — تحويل نص الورقة المكيّفة لملف صوتي (MP3) بصوت عربي عبر
+        # gTTS، لدعم الطلاب ذوي الإعاقة البصرية أو صعوبات القراءة الذين يحتاجون سماع محتوى
+        # الورقة بدل قراءته. نفس مبدأ الحماية المستخدم بباقي دوال التوليد أعلاه: أي خطأ
+        # (فشل اتصال بخدمة جوجل الصوتية، أو أي استثناء آخر) يُسجَّل بسجلات الخادم فقط
+        # ويُعاد None + رسالة عامة بدل انهيار الصفحة. ===
+        # =====================================================================================
+        MAX_TTS_CHARS = 4000
+
+        def create_worksheet_audio(text):
+            """
+            يعيد tuple: (BytesIO صوت MP3 أو None، رسالة تحذير/معلومة أو None).
+            """
+            if not GTTS_AVAILABLE:
+                return None, "⚠️ ميزة الاستماع الصوتي غير مفعّلة على الخادم حالياً. أضف السطر 'gTTS' إلى requirements.txt ثم أعد تشغيل التطبيق (Reboot app)."
+            clean_text = text.replace("#", "").replace("*", "").replace(">", "").strip()
+            if not clean_text:
+                return None, "لا يوجد نص كافٍ لتحويله إلى صوت."
+            truncated = False
+            if len(clean_text) > MAX_TTS_CHARS:
+                clean_text = clean_text[:MAX_TTS_CHARS]
+                truncated = True
+            try:
+                tts = gTTS(text=clean_text, lang="ar")
+                bio = io.BytesIO()
+                tts.write_to_fp(bio)
+                bio.seek(0)
+                warning = (
+                    f"⚠️ تم تحويل أول {MAX_TTS_CHARS:,} حرف فقط من الورقة إلى صوت بسبب حدود المدة الحالية."
+                    if truncated else None
+                )
+                return bio, warning
+            except Exception as e:
+                log_internal_error("فشل توليد الملف الصوتي لورقة العمل", e)
+                return None, "⚠️ تعذّر توليد الملف الصوتي حالياً (قد تكون خدمة الصوت مؤقتاً غير متاحة). يرجى المحاولة لاحقاً."
 
         # =====================================================================================
         # === تصميم بصري احترافي لملف PowerPoint (بديل محلي لا يحتاج إنترنت أو حساب Canva) ===
@@ -1970,9 +2027,26 @@ if __name__ == "__main__":
             return slides if slides else [[text]]
 
         def create_ppt_file(text):
+            """
+            غلاف آمن: يلتقط أي استثناء غير متوقع أثناء بناء ملف PowerPoint (مثلاً فشل
+            تضمين صورة ذكاء اصطناعي بصيغة غير مدعومة، أو أي خطأ آخر في مكتبة python-pptx)
+            بدل ترك التطبيق ينهار بالكامل. === إصلاح مهم: قبل هذا التعديل لم يكن هناك أي
+            حماية هنا على الإطلاق (خلافاً لملف PDF الذي كان محمياً بالفعل عبر
+            _create_pdf_file_impl)، فأي استثناء أثناء توليد PowerPoint كان يصعد دون
+            معالجة إلى future_ppt.result() في خطوة التوليد المتوازي أدناه، فيتسبب في
+            انهيار الصفحة بالكامل ويسحب معه أزرار تحميل Word وPDF التي تُبنى بالتوازي
+            في نفس الخطوة — وهذا هو سبب تعطّل "كل" أزرار التحميل أحياناً وليس فقط زر
+            PowerPoint. ===
+            """
             if not PPTX_AVAILABLE:
                 return None
+            try:
+                return _create_ppt_file_impl(text)
+            except Exception as e:
+                log_internal_error("فشل توليد ملف PowerPoint", e)
+                return None
 
+        def _create_ppt_file_impl(text):
             prs = Presentation()
             prs.slide_width = Inches(13.333)
             prs.slide_height = Inches(7.5)
@@ -1996,15 +2070,26 @@ if __name__ == "__main__":
 
             for filename in ["new_logo.png", "Educ_Worksheet_Adapt_Icon_(Square).png", "logo.png", "logo.jpg"]:
                 if os.path.exists(filename):
-                    slide.shapes.add_picture(filename, Inches(0.7), Inches(0.25), height=Inches(1.9))
+                    try:
+                        slide.shapes.add_picture(filename, Inches(0.7), Inches(0.25), height=Inches(1.9))
+                    except Exception as e:
+                        log_internal_error(f"فشل تضمين ملف الشعار {filename} في PowerPoint", e)
                     break
 
             cover_illustration = _generate_ai_illustration(
                 f"موضوع مادة {selected_subject} لطلاب {selected_grade}"
             )
+            cover_embedded = False
             if cover_illustration:
-                slide.shapes.add_picture(cover_illustration, Inches(8.6), Inches(1.9), height=Inches(3.4))
-            else:
+                # === إصلاح: صورة الذكاء الاصطناعي قد تصل بصيغة لا تدعمها python-pptx
+                # (مثل WEBP)، وهذا كان يُسقط الملف بالكامل قبل الإصلاح. الآن نرجع فوراً
+                # للأيقونة المرسومة محلياً بدل انهيار كل الشرائح. ===
+                try:
+                    slide.shapes.add_picture(cover_illustration, Inches(8.6), Inches(1.9), height=Inches(3.4))
+                    cover_embedded = True
+                except Exception as e:
+                    log_internal_error("فشل تضمين صورة الذكاء الاصطناعي في غلاف PowerPoint", e)
+            if not cover_embedded:
                 icon_bio = _draw_icon("idea", size=400, fg=(0x10, 0x1B, 0x2D, 255), bg=(0xF1, 0xC4, 0x0F, 255))
                 slide.shapes.add_picture(icon_bio, Inches(9.3), Inches(2.4), height=Inches(2.6))
 
@@ -2072,10 +2157,15 @@ if __name__ == "__main__":
                 if page_num <= 3:
                     slide_illustration = _generate_ai_illustration(chunk[0][:120])
 
+                slide_illustration_embedded = False
                 if slide_illustration:
-                    slide.shapes.add_picture(slide_illustration, Inches(10.0), Inches(1.35), height=Inches(2.2))
-                    content_width = Inches(9.1)
-                else:
+                    try:
+                        slide.shapes.add_picture(slide_illustration, Inches(10.0), Inches(1.35), height=Inches(2.2))
+                        slide_illustration_embedded = True
+                        content_width = Inches(9.1)
+                    except Exception as e:
+                        log_internal_error("فشل تضمين صورة الذكاء الاصطناعي في شريحة PowerPoint", e)
+                if not slide_illustration_embedded:
                     icon_kind = icon_cycle[(page_num - 1) % len(icon_cycle)]
                     icon_bio = _draw_icon(icon_kind, size=220,
                                            fg=(0x10, 0x1B, 0x2D, 255), bg=(0xF1, 0xC4, 0x0F, 255))
@@ -2349,8 +2439,16 @@ if __name__ == "__main__":
         # المستخرجة من نفس استجابة الذكاء الاصطناعي، لتوفير وقت التصحيح. ===
         # =====================================================================================
         def create_answer_key_excel(answer_key_list):
+            """غلاف آمن: نفس مبدأ الحماية المطبّق على PDF/Word/PowerPoint."""
             if not OPENPYXL_AVAILABLE or not answer_key_list:
                 return None
+            try:
+                return _create_answer_key_excel_impl(answer_key_list)
+            except Exception as e:
+                log_internal_error("فشل توليد ملف Excel لنموذج التصحيح", e)
+                return None
+
+        def _create_answer_key_excel_impl(answer_key_list):
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "نموذج التصحيح"
@@ -2385,9 +2483,16 @@ if __name__ == "__main__":
         # مع رجوع فوري لأيقونة مرسومة محلياً إذا كان توليد صور الذكاء الاصطناعي مطفأً. ===
         # =====================================================================================
         def create_pecs_cards_pdf(vocab_words):
+            """غلاف آمن: نفس مبدأ الحماية المطبّق على PDF/Word/PowerPoint/Excel."""
             if not PDF_AVAILABLE or not vocab_words:
                 return None, "لا توجد مفردات كافية أو مكتبة PDF غير متوفرة لإنشاء البطاقات."
+            try:
+                return _create_pecs_cards_pdf_impl(vocab_words)
+            except Exception as e:
+                log_internal_error("فشل توليد بطاقات PECS", e)
+                return None, "⚠️ حدث خطأ أثناء توليد بطاقات PECS. يرجى المحاولة مرة أخرى."
 
+        def _create_pecs_cards_pdf_impl(vocab_words):
             shaping_ready, font_path, reshape_func, display_func, _logs = _ensure_arabic_pdf_support()
 
             pdf = FPDF(orientation="P", unit="mm", format="A4")
@@ -2591,6 +2696,12 @@ if __name__ == "__main__":
             st.session_state.generated_for_text = None
         if "history_saved_for" not in st.session_state:
             st.session_state.history_saved_for = None
+        if "audio_generated_for_text" not in st.session_state:
+            st.session_state.audio_generated_for_text = None
+        if "generated_audio" not in st.session_state:
+            st.session_state.generated_audio = None
+        if "audio_warning" not in st.session_state:
+            st.session_state.audio_warning = None
 
         try:
             start_btn_container = st.container(key="start-ai-button")
@@ -2608,6 +2719,9 @@ if __name__ == "__main__":
             st.session_state.generated_files = {}
             st.session_state.generated_for_text = None
             st.session_state.history_saved_for = None
+            st.session_state.audio_generated_for_text = None
+            st.session_state.generated_audio = None
+            st.session_state.audio_warning = None
 
             if not extracted_content.strip():
                 extracted_content = f"ورقة عمل عامة لمبحث {selected_subject} للصف {selected_grade} وفق النظام {selected_system}."
@@ -2779,8 +2893,36 @@ if __name__ == "__main__":
             with worksheet_output_card:
                 st.markdown(st.session_state.adapted_text)
 
-            # --- حفظ نسخة من هذه الورقة في سجل الطالب مرة واحدة فقط لكل نص معتمد ---
             current_text = st.session_state.adapted_text
+
+            # =====================================================================================
+            # === "🔊 استمع للورقة" — يدعم الطلاب ذوي الإعاقة البصرية أو صعوبات القراءة الذين
+            # يحتاجون سماع محتوى الورقة بدل قراءته. يُولَّد الصوت مرة واحدة فقط لكل نص معتمد
+            # (مخزَّن بالجلسة) بدل إعادة الاتصال بخدمة الصوت في كل rerun. ===
+            # =====================================================================================
+            with st.expander("🔊 استمع للورقة / Listen to the Worksheet (لذوي الإعاقة البصرية)"):
+                if not GTTS_AVAILABLE:
+                    st.info("⚠️ ميزة الاستماع الصوتي غير مفعّلة على الخادم حالياً. أضف السطر 'gTTS' إلى requirements.txt ثم أعد تشغيل التطبيق (Reboot app).")
+                else:
+                    if st.button("🎧 تحويل الورقة إلى صوت / Generate Audio", key="generate_audio_btn"):
+                        with st.spinner("جاري تحويل الورقة إلى صوت..."):
+                            audio_bio, audio_warning = create_worksheet_audio(current_text)
+                        st.session_state.generated_audio = audio_bio.getvalue() if audio_bio else None
+                        st.session_state.audio_warning = audio_warning
+                        st.session_state.audio_generated_for_text = current_text
+
+                    if st.session_state.audio_generated_for_text == current_text and st.session_state.generated_audio:
+                        st.audio(st.session_state.generated_audio, format="audio/mp3")
+                        st.download_button(
+                            label="⬇️ تحميل الملف الصوتي (.mp3)",
+                            data=st.session_state.generated_audio,
+                            file_name="Adapted_Worksheet_Audio.mp3",
+                            mime="audio/mp3",
+                        )
+                    if st.session_state.audio_warning:
+                        st.info(st.session_state.audio_warning)
+
+            # --- حفظ نسخة من هذه الورقة في سجل الطالب مرة واحدة فقط لكل نص معتمد ---
             if st.session_state.history_saved_for != current_text:
                 _history_student_id = selected_student_record["id"] if selected_student_record else None
                 _history_student_name = (
@@ -2825,11 +2967,30 @@ if __name__ == "__main__":
                         future_excel = executor.submit(create_answer_key_excel, st.session_state.answer_key)
                         future_pecs = executor.submit(create_pecs_cards_pdf, st.session_state.vocab_words)
 
-                        word_bio = future_word.result()
-                        ppt_bio = future_ppt.result()
-                        pdf_bio, pdf_warning = future_pdf.result()
-                        answer_key_excel_bio = future_excel.result()
-                        pecs_pdf_bio, pecs_warning = future_pecs.result()
+                        # === إصلاح جوهري: كل دالة توليد أعلاه أصبحت الآن محمية داخلياً بـ
+                        # try/except خاص بها، لكن هذا الحاجز الإضافي هنا يضمن أنه حتى لو
+                        # حدث خطأ غير متوقع تماماً (مثلاً خطأ داخل الحماية نفسها)، فإن
+                        # future.result() لن يرفع الاستثناء ليُسقط الصفحة كاملة ويُفشل
+                        # عرض بقية أزرار التحميل معه. سابقاً: أي استثناء من أي ملف واحد
+                        # كان يُسقط الخمسة ملفات كلها ويُظهر خطأ عام للمعلم. ===
+                        def _safe_result(future, label, default):
+                            try:
+                                return future.result()
+                            except Exception as e:
+                                log_internal_error(f"فشل غير متوقع أثناء توليد {label}", e)
+                                return default
+
+                        word_bio = _safe_result(future_word, "ملف Word", None)
+                        ppt_bio = _safe_result(future_ppt, "ملف PowerPoint", None)
+                        pdf_bio, pdf_warning = _safe_result(
+                            future_pdf, "ملف PDF",
+                            (None, "⚠️ حدث خطأ غير متوقع أثناء توليد ملف PDF.")
+                        )
+                        answer_key_excel_bio = _safe_result(future_excel, "ملف Excel لنموذج التصحيح", None)
+                        pecs_pdf_bio, pecs_warning = _safe_result(
+                            future_pecs, "بطاقات PECS",
+                            (None, "⚠️ حدث خطأ غير متوقع أثناء توليد بطاقات PECS.")
+                        )
 
                     st.session_state.generated_files = {
                         "word": word_bio.getvalue() if word_bio else None,
