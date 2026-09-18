@@ -708,13 +708,14 @@ if __name__ == "__main__":
     """, height=0, width=0)
 
     # =========================================================================================
-    # === إصلاح مربّعات "None" الغامضة التي تظهر أعلى الصفحة: المحاولة السابقة (إخفاء
-    # stAppToolbar/stToolbar/stDecoration بـ CSS فقط) لم تحل المشكلة بشكل كامل — يبدو أن
-    # هذه العناصر تُنشأ أو تُعاد إنشاؤها ديناميكياً من طرف Streamlit نفسه بعد تحميل
-    # الصفحة، فقاعدة CSS الثابتة لا تلحقها دائماً. الحل الأشمل هنا: سكربت JS يبحث بشكل
-    # دوري (ومع أي تغيير بالصفحة عبر MutationObserver) عن أي عنصر "ورقة" (بلا عناصر
-    # فرعية) نصّه الكامل هو "None" بالضبط، ويخفيه فوراً — بغضّ النظر عن مصدره الحقيقي.
-    # هذا آمن لأن واجهة التطبيق كلها بالعربية ولا يوجد أي نص حقيقي بالتطبيق يساوي "None". ===
+    # === إصلاح مربّعات "None" الغامضة التي تظهر أعلى الصفحة: المحاولة السابقة كانت تفحص
+    # فقط عناصر div/span/p/small/label بلا عناصر فرعية — لو كان النص "None" مغلّفاً بعنصر
+    # HTML مختلف (button مثلاً) أو ببنية متداخلة أعمق، كانت تفوتها. الحل الأشمل هنا: نمشي
+    # على كل "عُقد النص" (Text Nodes) الفعلية بالصفحة مباشرة (بدل تخمين نوع العنصر)، ولو
+    # وجدنا عقدة نصّها الكامل بعد التقليم "None" بالضبط، نطلع للعناصر الأب (Parent) واحداً
+    # فواحداً ونخفي كل عنصر يكون نصّه الكامل هو "None" فقط أيضاً — هذا يمسك أي بنية HTML
+    # كانت (span, div, button, أو غيرها) بدون الحاجة لتخمين اسم الوسم مسبقاً. يعمل فوراً
+    # عند التحميل، ومع أي تغيير بالصفحة (MutationObserver)، وبشكل دوري احتياطي كل نصف ثانية. ===
     # =========================================================================================
     components.html("""
     <script>
@@ -722,10 +723,19 @@ if __name__ == "__main__":
       function hideNoneArtifacts() {
         try {
           const doc = window.parent.document;
-          const candidates = doc.querySelectorAll('div, span, p, small, label');
-          candidates.forEach((el) => {
-            if (el.children.length === 0 && el.textContent.trim() === 'None') {
+          const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
+          const textNodes = [];
+          let node;
+          while ((node = walker.nextNode())) {
+            if (node.nodeValue && node.nodeValue.trim() === 'None') {
+              textNodes.push(node);
+            }
+          }
+          textNodes.forEach((textNode) => {
+            let el = textNode.parentElement;
+            while (el && el !== doc.body && el.textContent.trim() === 'None') {
               el.style.display = 'none';
+              el = el.parentElement;
             }
           });
         } catch (e) { /* تجاهل أي خطأ صلاحيات وصول بين الإطارات */ }
@@ -735,7 +745,7 @@ if __name__ == "__main__":
         const observer = new MutationObserver(hideNoneArtifacts);
         observer.observe(window.parent.document.body, { childList: true, subtree: true });
       } catch (e) { /* تجاهل */ }
-      setInterval(hideNoneArtifacts, 1000);
+      setInterval(hideNoneArtifacts, 500);
     })();
     </script>
     """, height=0, width=0)
@@ -1342,9 +1352,17 @@ if __name__ == "__main__":
     # هذا النموذج مباشرة. ===
     # =========================================================================================
     if not st.session_state.teacher_name:
-        st.markdown(textwrap.dedent("""
-            <div style="text-align:center; max-width:620px; margin:0 auto; padding: 30px 20px 6px 20px;
-                        font-family:'Cairo', -apple-system, sans-serif;">
+        # === إصلاح جذري ونهائي لمشكلة ظهور وسوم HTML كنص خام: بدل الاعتماد على
+        # st.markdown مع unsafe_allow_html (اللي يمرّ عبر محلّل Markdown ويمكن يُخطئ
+        # ويتعامل مع أي سطر فيه مسافة بادئة أو سطر فاضي كـ "كود نصي" بدل HTML فعلي)،
+        # استخدمنا هنا components.html مباشرة — هذا يرسم HTML خام 100% داخل iframe
+        # مخصّص، بدون أي محلّل Markdown في المنتصف، فمستحيل يطلع كنص خام بعد اليوم.
+        # السكربت الصغير بالأسفل يقيس ارتفاع المحتوى الفعلي ويضبط ارتفاع iframe عليه
+        # تلقائياً (بدل رقم ثابت قد يقصّ المحتوى على شاشات موبايل ضيقة). ===
+        components.html(textwrap.dedent("""
+            <div id="ewas-login-lock" style="text-align:center; max-width:620px; margin:0 auto;
+                        padding: 30px 20px 6px 20px; font-family:'Cairo', -apple-system, sans-serif;
+                        box-sizing: border-box;">
                 <div style="font-size:48px; line-height:1; margin-bottom:10px;">🔒</div>
 
                 <h2 style="margin:0 0 4px 0; color:#101B2D; font-weight:800;">يجب تسجيل الدخول أولاً</h2>
@@ -1364,7 +1382,17 @@ if __name__ == "__main__":
                     from the form below to continue.
                 </p>
             </div>
-        """).strip(), unsafe_allow_html=True)
+            <script>
+            function _ewasResize() {
+                var h = document.getElementById('ewas-login-lock').scrollHeight + 20;
+                if (window.frameElement) { window.frameElement.style.height = h + 'px'; }
+                window.parent.postMessage({type: 'streamlit:setFrameHeight', height: h}, '*');
+            }
+            window.addEventListener('load', _ewasResize);
+            _ewasResize();
+            setTimeout(_ewasResize, 200);
+            </script>
+        """).strip(), height=470, scrolling=False)
 
         _login_col_l, _login_col_mid, _login_col_r = st.columns([1, 2.4, 1])
         with _login_col_mid:
