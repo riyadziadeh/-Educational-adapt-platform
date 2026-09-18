@@ -121,6 +121,22 @@ except Exception:
 USE_POSTGRES = bool(SUPABASE_DB_URL and PSYCOPG2_AVAILABLE)
 DB_PATH = "edu_adapt_data.db"  # يُستخدم فقط كتخزين احتياطي مؤقت (غير دائم على الاستضافة السحابية)
 
+# =========================================================================================
+# === ربط الاشتراك المدفوع على Whop (منتج EWAS) بحسابات المعلمين: كل حساب جديد لازم
+# يدخل "مفتاح ترخيص" (License Key) يستلمه من Whop بعد الدفع، ويتحقق التطبيق منه مباشرة
+# عبر واجهة Whop API قبل السماح بإنشاء الحساب، وبشكل دوري (كل 24 ساعة تقريباً) عند
+# الدخول للتأكد أن الاشتراك ما زال فعالاً (ولم يُلغَ أو ينتهِ). الحسابات القديمة التي
+# أُنشئت قبل هذه الميزة (بدون مفتاح ترخيص محفوظ) تبقى تعمل بلا قيود لتفادي كسرها. ===
+# =========================================================================================
+WHOP_API_KEY = None
+try:
+    WHOP_API_KEY = st.secrets.get("WHOP_API_KEY", None)
+except Exception:
+    WHOP_API_KEY = os.getenv("WHOP_API_KEY")
+
+WHOP_API_BASE = "https://api.whop.com/api/v1"
+MONTHLY_WORKSHEET_LIMIT = 50  # الحد الأقصى لعدد أوراق العمل المولّدة شهرياً لكل حساب مشترك
+
 
 @st.cache_resource(show_spinner=False)
 def _get_pg_connection():
@@ -206,8 +222,12 @@ def init_db():
             locked_until TEXT
         )
     """)
-    # === ترقية الجداول القديمة: إضافة أعمدة قفل الحساب لو الجدول أُنشئ قبل هذا الإصلاح ===
-    for column_def in ("failed_attempts INTEGER DEFAULT 0", "locked_until TEXT"):
+    # === ترقية الجداول القديمة: إضافة أعمدة قفل الحساب وأعمدة مفتاح ترخيص Whop لو الجدول
+    # أُنشئ قبل هذه الإصلاحات ===
+    for column_def in (
+        "failed_attempts INTEGER DEFAULT 0", "locked_until TEXT",
+        "license_key TEXT", "license_status TEXT", "license_checked_at TEXT"
+    ):
         try:
             cur.execute(f"ALTER TABLE teachers ADD COLUMN {column_def}")
             conn.commit()
@@ -329,19 +349,65 @@ PASSWORD_REQUIREMENT_MSG = "كلمة المرور يجب أن تتكوّن من 
 MAX_FAILED_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 15
 
+# === مدة صلاحية آخر تحقق من حالة الاشتراك قبل إعادة السؤال من Whop عند تسجيل الدخول،
+# لتجنّب استدعاء الـ API في كل مرة (اشتراك ما بيتغيّر كل دقيقة). ===
+LICENSE_RECHECK_HOURS = 24
 
-def register_teacher(username, password):
+
+def _whop_check_license(license_key):
     """
-    إنشاء حساب معلم جديد. يرفض الطلب لو اسم المستخدم محجوز مسبقاً.
+    يتحقق من صلاحية مفتاح ترخيص Whop عبر واجهة Whop API (GET /memberships/{license_key}).
+    يعيد tuple: (is_active: bool, status: str|None, error_message: str|None).
+    error_message تُعرض للمستخدم فقط لو تعذّر التحقق تقنياً (لا يعني بالضرورة أن المفتاح خطأ).
+    """
+    license_key = (license_key or "").strip()
+    if not license_key:
+        return False, None, "الرجاء إدخال مفتاح الترخيص."
+    if not REQUESTS_AVAILABLE or not WHOP_API_KEY:
+        log_internal_error("تعذّر التحقق من الترخيص", "WHOP_API_KEY أو مكتبة requests غير متاحة")
+        return False, None, "خدمة التحقق من الاشتراك غير متاحة حالياً. حاول لاحقاً أو تواصل مع الدعم."
+    try:
+        resp = requests.get(
+            f"{WHOP_API_BASE}/memberships/{license_key}",
+            headers={"Authorization": f"Bearer {WHOP_API_KEY}"},
+            timeout=10,
+        )
+        if resp.status_code == 404:
+            return False, None, "مفتاح الترخيص غير صحيح. تأكد من نسخه كاملاً من رسالة/صفحة الشراء على Whop."
+        if resp.status_code != 200:
+            log_internal_error(f"فشل التحقق من مفتاح الترخيص (HTTP {resp.status_code})", resp.text[:300])
+            return False, None, "تعذّر التحقق من مفتاح الترخيص حالياً. حاول مرة أخرى بعد قليل."
+        data = resp.json()
+        status = data.get("status")
+        is_active = status in ("active", "trialing")
+        return is_active, status, None
+    except Exception as e:
+        log_internal_error("خطأ أثناء الاتصال بخدمة Whop للتحقق من الترخيص", e)
+        return False, None, "تعذّر الاتصال بخدمة التحقق من الاشتراك حالياً. حاول مرة أخرى بعد قليل."
+
+
+def register_teacher(username, password, license_key):
+    """
+    إنشاء حساب معلم جديد. يرفض الطلب لو اسم المستخدم محجوز مسبقاً، أو لو مفتاح الترخيص
+    غير صحيح/غير فعّال، أو مستخدم مسبقاً بحساب آخر (كل مفتاح = اشتراك واحد = حساب واحد).
     يعيد tuple: (success: bool, message: str)
     """
     username = username.strip()
     password = password.strip()
+    license_key = (license_key or "").strip()
 
     if not username or not password:
         return False, "الرجاء إدخال اسم المستخدم وكلمة المرور معاً."
     if not _is_valid_password(password):
         return False, PASSWORD_REQUIREMENT_MSG
+    if not license_key:
+        return False, "الرجاء إدخال مفتاح الترخيص (License Key) الذي استلمته بعد الاشتراك في EWAS على Whop."
+
+    is_active, status, err = _whop_check_license(license_key)
+    if err:
+        return False, err
+    if not is_active:
+        return False, "مفتاح الترخيص هذا غير فعّال حالياً (الاشتراك منتهي أو مُلغى). الرجاء التجديد من صفحة EWAS على Whop."
 
     conn = get_db()
     cur = conn.cursor()
@@ -350,9 +416,17 @@ def register_teacher(username, password):
         release_db(conn)
         return False, "اسم المستخدم هذا محجوز مسبقاً. الرجاء اختيار اسم آخر أو تسجيل الدخول."
 
+    cur.execute(_q("SELECT teacher_name FROM teachers WHERE license_key = ?"), (license_key,))
+    if cur.fetchone() is not None:
+        release_db(conn)
+        return False, "هذا مفتاح الترخيص مستخدم مسبقاً بحساب آخر. كل مفتاح ترخيص يمكن استخدامه لحساب واحد فقط."
+
     cur.execute(
-        _q("INSERT INTO teachers (teacher_name, pin_hash, created_at, failed_attempts) VALUES (?, ?, ?, 0)"),
-        (username, _hash_password(password), datetime.now().isoformat())
+        _q("""INSERT INTO teachers
+           (teacher_name, pin_hash, created_at, failed_attempts, license_key, license_status, license_checked_at)
+           VALUES (?, ?, ?, 0, ?, ?, ?)"""),
+        (username, _hash_password(password), datetime.now().isoformat(),
+         license_key, status, datetime.now().isoformat())
     )
     conn.commit()
     release_db(conn)
@@ -374,7 +448,8 @@ def login_teacher(username, password):
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        _q("SELECT pin_hash, failed_attempts, locked_until FROM teachers WHERE teacher_name = ?"),
+        _q("""SELECT pin_hash, failed_attempts, locked_until, license_key, license_status,
+              license_checked_at FROM teachers WHERE teacher_name = ?"""),
         (username,)
     )
     row = _row_to_dict(cur, cur.fetchone())
@@ -414,6 +489,32 @@ def login_teacher(username, password):
         conn.commit()
         release_db(conn)
         return False, "كلمة المرور غير صحيحة."
+
+    # === التحقق الدوري من حالة الاشتراك على Whop (فقط للحسابات التي أُنشئت بمفتاح ترخيص —
+    # الحسابات القديمة بدون مفتاح تبقى تعمل بلا قيود). لا نستدعي Whop في كل دخول، بل فقط
+    # لو مر أكثر من LICENSE_RECHECK_HOURS ساعة منذ آخر تحقق، لتقليل عدد الاستدعاءات. ===
+    license_key = row.get("license_key")
+    license_status = row.get("license_status")
+    if license_key:
+        needs_recheck = True
+        checked_at_raw = row.get("license_checked_at")
+        if checked_at_raw:
+            try:
+                needs_recheck = (datetime.now() - datetime.fromisoformat(checked_at_raw)) > timedelta(hours=LICENSE_RECHECK_HOURS)
+            except Exception:
+                needs_recheck = True
+        if needs_recheck:
+            is_active, fresh_status, err = _whop_check_license(license_key)
+            if not err:
+                license_status = fresh_status
+                cur.execute(
+                    _q("UPDATE teachers SET license_status = ?, license_checked_at = ? WHERE teacher_name = ?"),
+                    (fresh_status, datetime.now().isoformat(), username)
+                )
+                conn.commit()
+        if license_status not in ("active", "trialing"):
+            release_db(conn)
+            return False, "انتهى اشتراكك في EWAS أو تم إلغاؤه. الرجاء تجديد الاشتراك من صفحة المنتج على Whop للاستمرار."
 
     # نجاح الدخول: تصفير عدّاد المحاولات الخاطئة وفكّ القفل، وترقية التجزئة القديمة إن لزم
     new_hash = _hash_password(password) if needs_upgrade else row["pin_hash"]
@@ -546,6 +647,23 @@ def save_worksheet_history(teacher_name, student_id, student_name, subject, grad
     )
     conn.commit()
     release_db(conn)
+
+
+def get_monthly_usage_count(teacher_name):
+    """
+    يحسب عدد أوراق العمل التي ولّدها هذا المعلم خلال الشهر الحالي (تقويمياً)، لتطبيق
+    سقف الاستخدام الشهري (MONTHLY_WORKSHEET_LIMIT) المرتبط بالاشتراك الشهري على Whop.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    month_prefix = datetime.now().strftime("%Y-%m")
+    cur.execute(
+        _q("SELECT COUNT(*) AS cnt FROM worksheet_history WHERE teacher_name = ? AND created_at LIKE ?"),
+        (teacher_name, f"{month_prefix}%")
+    )
+    row = _row_to_dict(cur, cur.fetchone())
+    release_db(conn)
+    return row["cnt"] if row and row.get("cnt") is not None else 0
 
 
 def get_student_history(teacher_name, student_id):
@@ -1161,6 +1279,10 @@ if __name__ == "__main__":
 
             else:
                 st.caption(f"اختر اسم مستخدم جديد وكلمة مرور. {PASSWORD_REQUIREMENT_MSG}")
+                st.caption(
+                    "🔑 لازم يكون معك مفتاح ترخيص (License Key) استلمته بعد الاشتراك في EWAS على Whop "
+                    "— بتوصلك بإيميل التأكيد بعد الدفع، أو من قسم \"Software\" بحسابك على Whop."
+                )
                 # === نفس إصلاح st.form أعلاه، مطبّق هنا أيضاً على نموذج إنشاء الحساب. ===
                 with st.form("register_form", clear_on_submit=False):
                     register_username = st.text_input("اسم المستخدم الجديد / New Username:", key="register_username_input")
@@ -1172,12 +1294,17 @@ if __name__ == "__main__":
                         "تأكيد كلمة المرور / Confirm Password:",
                         key="register_password_confirm_input", type="password", max_chars=32
                     )
+                    register_license_key = st.text_input(
+                        "مفتاح الترخيص (License Key) من Whop:",
+                        key="register_license_key_input"
+                    )
                     register_submitted = st.form_submit_button("🆕 إنشاء الحساب / Create Account", use_container_width=True)
                 if register_submitted:
                     if register_password != register_password_confirm:
                         st.error("كلمة المرور وتأكيدها غير متطابقين.")
                     else:
-                        success, message = register_teacher(register_username, register_password)
+                        with st.spinner("جاري التحقق من مفتاح الترخيص مع Whop..."):
+                            success, message = register_teacher(register_username, register_password, register_license_key)
                         if success:
                             st.session_state.teacher_name = register_username.strip()
                             st.success(message)
@@ -2732,7 +2859,22 @@ if __name__ == "__main__":
         with start_btn_container:
             start_clicked = st.button("🚀 Start", use_container_width=True)
 
+        # === سقف الاستخدام الشهري المرتبط بالاشتراك على Whop: يُطبّق فقط على الحسابات
+        # المرتبطة بمفتاح ترخيص (الحسابات القديمة بدون مفتاح تبقى بلا قيود). ===
+        _quota_blocked_now = False
         if start_clicked:
+            _current_teacher_for_quota = st.session_state.get("teacher_name", "")
+            if _current_teacher_for_quota:
+                _current_month_usage = get_monthly_usage_count(_current_teacher_for_quota)
+                if _current_month_usage >= MONTHLY_WORKSHEET_LIMIT:
+                    _quota_blocked_now = True
+                    st.error(
+                        f"⚠️ لقد استخدمت الحد الأقصى المسموح به هذا الشهر "
+                        f"({MONTHLY_WORKSHEET_LIMIT} ورقة عمل) ضمن اشتراكك الحالي. "
+                        "سيُعاد تعيين الحد أول الشهر القادم، أو تواصل معنا لترقية الباقة."
+                    )
+
+        if start_clicked and not _quota_blocked_now:
             # إعادة تصفير دورة العمل بالكامل عند بدء تكييف جديد
             st.session_state.adapted_text = None
             st.session_state.adapted_text_draft = None
@@ -3254,8 +3396,17 @@ if _pytest_for_tests is not None:
         كل اختبار يحصل على قاعدة بيانات SQLite مؤقتة ونظيفة خاصة به (بتغيير مجلد
         العمل الحالي إلى مجلد مؤقت فريد، ثم إعادة إنشاء الجداول فيه)، حتى لا تتداخل
         الاختبارات مع بعضها أو مع أي قاعدة بيانات حقيقية للتطبيق.
+
+        كذلك نستبدل (monkeypatch) دالة التحقق من مفتاح ترخيص Whop بنسخة وهمية تنجح
+        فوراً دون أي اتصال شبكة فعلي — الاختبارات تتحقق من منطق الحسابات محلياً
+        (تسجيل/دخول/قفل) لا من تكامل Whop نفسه، الذي لا يمكن اختباره بدون شبكة حقيقية.
         """
         monkeypatch.chdir(tmp_path)
+        import sys as _sys_for_patch
+        monkeypatch.setattr(
+            _sys_for_patch.modules[__name__], "_whop_check_license",
+            lambda license_key: (True, "active", None),
+        )
         init_db()
         yield
 
@@ -3311,25 +3462,27 @@ if _pytest_for_tests is not None:
     # === التسجيل وتسجيل الدخول عبر قاعدة البيانات الفعلية (SQLite مؤقتة) ===
     # =====================================================================================
 
+    _DUMMY_LICENSE_KEY = "DUMMY-LICENSE-KEY-0001"
+
     def test_register_rejects_weak_password():
-        success, message = register_teacher("teacher_a", "1234")
+        success, message = register_teacher("teacher_a", "1234", _DUMMY_LICENSE_KEY)
         assert success is False
         assert "٦ خانات" in message
 
     def test_register_then_login_succeeds():
-        success, _ = register_teacher("teacher_b", "Secret12")
+        success, _ = register_teacher("teacher_b", "Secret12", _DUMMY_LICENSE_KEY)
         assert success is True
         success, message = login_teacher("teacher_b", "Secret12")
         assert success is True
 
     def test_register_duplicate_username_rejected():
-        register_teacher("teacher_c", "Secret12")
-        success, message = register_teacher("teacher_c", "Another99")
+        register_teacher("teacher_c", "Secret12", _DUMMY_LICENSE_KEY)
+        success, message = register_teacher("teacher_c", "Another99", _DUMMY_LICENSE_KEY)
         assert success is False
         assert "محجوز" in message
 
     def test_login_wrong_password_rejected():
-        register_teacher("teacher_d", "Secret12")
+        register_teacher("teacher_d", "Secret12", _DUMMY_LICENSE_KEY)
         success, message = login_teacher("teacher_d", "WrongPass")
         assert success is False
 
@@ -3339,7 +3492,7 @@ if _pytest_for_tests is not None:
         assert "لا يوجد حساب" in message
 
     def test_account_locks_after_max_failed_attempts():
-        register_teacher("teacher_e", "Secret12")
+        register_teacher("teacher_e", "Secret12", _DUMMY_LICENSE_KEY)
         for _ in range(MAX_FAILED_LOGIN_ATTEMPTS - 1):
             success, _ = login_teacher("teacher_e", "WrongPass")
             assert success is False
@@ -3354,7 +3507,7 @@ if _pytest_for_tests is not None:
         assert "قفل" in message
 
     def test_successful_login_resets_failed_attempts():
-        register_teacher("teacher_f", "Secret12")
+        register_teacher("teacher_f", "Secret12", _DUMMY_LICENSE_KEY)
         login_teacher("teacher_f", "WrongPass")
         login_teacher("teacher_f", "WrongPass")
         success, _ = login_teacher("teacher_f", "Secret12")
