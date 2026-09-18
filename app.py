@@ -1364,7 +1364,7 @@ if __name__ == "__main__":
                     from the form below to continue.
                 </p>
             </div>
-        """, unsafe_allow_html=True)
+        """).strip(), unsafe_allow_html=True)
 
         _login_col_l, _login_col_mid, _login_col_r = st.columns([1, 2.4, 1])
         with _login_col_mid:
@@ -1452,19 +1452,19 @@ if __name__ == "__main__":
     # يحتاج أي وصول لعناصر الصفحة الأصلية من داخل إطار iframe منفصل. ===
 
     # شريط علوي كحلي بأسلوب "شريط البحث" الموجود في التطبيقات، للزينة وربط الهوية البصرية بالتصميم المطلوب
-    st.markdown(f"""
+    st.markdown(textwrap.dedent(f"""
         <div class="app-topbar">
             <div class="search-fake">🔍 &nbsp; اختر بيانات ورقة العمل من الشبكة أدناه</div>
         </div>
-    """, unsafe_allow_html=True)
+    """).strip(), unsafe_allow_html=True)
 
     # العنوان الرئيسي للنظام تحت الشعار مباشرة
-    st.markdown("""
+    st.markdown(textwrap.dedent("""
         <div style="text-align: center;">
             <h1 style="font-size: 28px; margin-bottom: 0; font-weight: 900;">نظام تكييف أوراق العمل التربوية</h1>
             <h2 style="font-size: 22px; margin-top: 5px; font-weight: 900;">Educational Worksheet Adaptation System</h2>
         </div>
-    """, unsafe_allow_html=True)
+    """).strip(), unsafe_allow_html=True)
 
     st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغة المختارة مع خيارات التحميل المتعددة.")
 
@@ -1788,13 +1788,13 @@ if __name__ == "__main__":
         )
         generate_alternative = (mode_idx == 1)
 
-        st.markdown(f"""
+        st.markdown(textwrap.dedent(f"""
             <div class="selection-summary">
                 المختار حالياً: {subjects_with_icons[subject_idx][1]} &nbsp;|&nbsp;
                 {selected_level} &nbsp;|&nbsp;
                 {mode_items[mode_idx][1]}
             </div>
-        """, unsafe_allow_html=True)
+        """).strip(), unsafe_allow_html=True)
 
         st.markdown("---")
 
@@ -3436,7 +3436,7 @@ if __name__ == "__main__":
             # الجملة العربية، الفاصل، الجملة الإنجليزية) في سطر مستقل وواضح، بخط مقروء،
             # مع مساحة داخلية كافية — بدون الرجوع لحجم الصندوق الضخم الأصلي. ===
             # =====================================================================================
-            st.markdown(f"""
+            st.markdown(textwrap.dedent(f"""
                 <div class="animated-box" style="
                     background: linear-gradient(135deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
                     border: none;
@@ -3458,7 +3458,7 @@ if __name__ == "__main__":
                         Thank you for using Edu Worksheet Adapt
                     </div>
                 </div>
-            """, unsafe_allow_html=True)
+            """).strip(), unsafe_allow_html=True)
 
 
 # =========================================================================================
