@@ -707,6 +707,39 @@ if __name__ == "__main__":
     """, height=0, width=0)
 
     # =========================================================================================
+    # === إصلاح مربّعات "None" الغامضة التي تظهر أعلى الصفحة: المحاولة السابقة (إخفاء
+    # stAppToolbar/stToolbar/stDecoration بـ CSS فقط) لم تحل المشكلة بشكل كامل — يبدو أن
+    # هذه العناصر تُنشأ أو تُعاد إنشاؤها ديناميكياً من طرف Streamlit نفسه بعد تحميل
+    # الصفحة، فقاعدة CSS الثابتة لا تلحقها دائماً. الحل الأشمل هنا: سكربت JS يبحث بشكل
+    # دوري (ومع أي تغيير بالصفحة عبر MutationObserver) عن أي عنصر "ورقة" (بلا عناصر
+    # فرعية) نصّه الكامل هو "None" بالضبط، ويخفيه فوراً — بغضّ النظر عن مصدره الحقيقي.
+    # هذا آمن لأن واجهة التطبيق كلها بالعربية ولا يوجد أي نص حقيقي بالتطبيق يساوي "None". ===
+    # =========================================================================================
+    components.html("""
+    <script>
+    (function() {
+      function hideNoneArtifacts() {
+        try {
+          const doc = window.parent.document;
+          const candidates = doc.querySelectorAll('div, span, p, small, label');
+          candidates.forEach((el) => {
+            if (el.children.length === 0 && el.textContent.trim() === 'None') {
+              el.style.display = 'none';
+            }
+          });
+        } catch (e) { /* تجاهل أي خطأ صلاحيات وصول بين الإطارات */ }
+      }
+      hideNoneArtifacts();
+      try {
+        const observer = new MutationObserver(hideNoneArtifacts);
+        observer.observe(window.parent.document.body, { childList: true, subtree: true });
+      } catch (e) { /* تجاهل */ }
+      setInterval(hideNoneArtifacts, 1000);
+    })();
+    </script>
+    """, height=0, width=0)
+
+    # =========================================================================================
     # === هوية الألوان الرسمية للتطبيق: كحلي غامق + كحلي/أزرق فاتح + ذهبي + أبيض ===
     # =========================================================================================
     NAVY_DARK = "#101B2D"      # الأزرق الكحلي الغامق (خلفية الهيدر والبطاقات المختارة)
@@ -1245,13 +1278,106 @@ if __name__ == "__main__":
                 st.session_state.teacher_name = ""
                 st.rerun()
         else:
+            # === إصلاح: نموذج تسجيل الدخول/إنشاء الحساب انتقل من الشريط الجانبي إلى
+            # منتصف الصفحة الرئيسية مباشرة (أنظر أسفل قسم "يجب تسجيل الدخول أولاً").
+            # السبب: على شاشات الموبايل الشريط الجانبي يكون مطوياً تلقائياً وبدون زر
+            # واضح لفتحه في بعض المتصفحات، فكان المستخدم يرى فقط رسالة "يجب تسجيل
+            # الدخول" بدون أي طريقة فعلية للوصول لنموذج الدخول. الآن النموذج نفسه
+            # جزء من الصفحة الرئيسية، ظاهر مباشرة بدون الحاجة لفتح أي قائمة جانبية. ===
+            st.caption("👈 نموذج تسجيل الدخول / إنشاء الحساب موجود في وسط الصفحة الرئيسية.")
+
+    # =========================================================================================
+    # === إزالة الخلفية البيضاء من صورة الشعار تلقائياً وتحويلها لشفافة، حتى يندمج الشعار
+    # بصرياً مع خلفية التطبيق بدل الظهور داخل مربع أبيض واضح الحواف. النتيجة مخزّنة
+    # مؤقتاً (cache) حتى لا تُعاد المعالجة في كل rerun. ===
+    # === إصلاح: نقلنا عرض الشعار ليكون قبل فحص تسجيل الدخول (بدل بعده) — بهذا الشكل
+    # الشعار يظهر أيضاً لأي زائر غير مسجّل على صفحة "يجب تسجيل الدخول أولاً"، لا يظهر
+    # فقط بعد الدخول. ===
+    # =========================================================================================
+    @st.cache_data(show_spinner=False)
+    def _load_logo_with_transparent_background(path, white_threshold=245):
+        image = Image.open(path).convert("RGBA")
+        datas = image.getdata()
+        new_data = []
+        for item in datas:
+            if item[0] >= white_threshold and item[1] >= white_threshold and item[2] >= white_threshold:
+                new_data.append((255, 255, 255, 0))
+            else:
+                new_data.append(item)
+        image.putdata(new_data)
+        return image
+
+    def _render_logo():
+        """يعرض شعار التطبيق في منتصف الصفحة — يُستخدم قبل تسجيل الدخول وبعده."""
+        col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
+        with col_logo2:
+            logo_loaded = False
+            logo_filenames = [
+                "new_logo.png",
+                "Educ_Worksheet_Adapt_Icon_(Square).png",
+                "logo.png", "logo.jpg", "Logo.png", "Logo.JPG"
+            ]
+            for filename in logo_filenames:
+                if os.path.exists(filename):
+                    try:
+                        image = _load_logo_with_transparent_background(filename)
+                    except Exception:
+                        image = Image.open(filename)
+                    st.image(image, use_container_width=True)
+                    logo_loaded = True
+                    break
+            if not logo_loaded:
+                st.warning("الرجاء التأكد من رفع صورة الأيقونة باسم new_logo.png في نفس مجلد المشروع.")
+
+    _render_logo()
+
+    # =========================================================================================
+    # === إصلاح أمني مهم: قبل هذا الإصلاح كان بإمكان أي زائر استخدام التطبيق (رفع ورقة
+    # عمل والحصول على تكييف كامل) دون تسجيل دخول على الإطلاق — الكود كان يستخدم اسم
+    # "معلم_عام" كحساب افتراضي لأي زائر غير مسجّل. الآن: أي زائر غير مسجّل يرى نموذج
+    # تسجيل دخول/إنشاء حساب واضح في وسط الصفحة الرئيسية مباشرة (وليس في الشريط الجانبي
+    # فقط — لأن الشريط الجانبي على الموبايل يكون مطوياً بدون طريقة واضحة لفتحه)، ولا
+    # يصل لأي جزء من واجهة التكييف الفعلية. st.stop() يوقف تنفيذ باقي الصفحة بعد عرض
+    # هذا النموذج مباشرة. ===
+    # =========================================================================================
+    if not st.session_state.teacher_name:
+        st.markdown("""
+            <div style="text-align:center; max-width:620px; margin:0 auto; padding: 30px 20px 6px 20px;
+                        font-family:'Cairo', -apple-system, sans-serif;">
+                <div style="font-size:48px; line-height:1; margin-bottom:10px;">🔒</div>
+
+                <h2 style="margin:0 0 4px 0; color:#101B2D; font-weight:800;">يجب تسجيل الدخول أولاً</h2>
+                <h3 style="margin:0 0 22px 0; color:#2E6FBB; font-weight:600;">You must log in first</h3>
+
+                <p style="font-size:17px; color:#222; line-height:2; margin:0;">
+                    سجّل دخولك بحسابك الحالي<br>
+                    أو أنشئ حساباً جديداً بمفتاح ترخيص Whop<br>
+                    من النموذج أدناه للاستمرار.
+                </p>
+
+                <div style="height:1px; background:#E3E9F2; margin:20px auto; width:80%;"></div>
+
+                <p style="font-size:15px; color:#666; line-height:2; margin:0;">
+                    Log in with your existing account,<br>
+                    or create a new one using your Whop license key,<br>
+                    from the form below to continue.
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        _login_col_l, _login_col_mid, _login_col_r = st.columns([1, 2.4, 1])
+        with _login_col_mid:
             auth_mode = st.radio(
                 "اختر / Choose:",
                 ["🔐 تسجيل دخول / Login", "🆕 إنشاء حساب جديد / Create Account"],
-                key="auth_mode_radio"
+                key="auth_mode_radio",
+                horizontal=True,
             )
 
+            st.write("")  # مسافة فاصلة صغيرة أنيقة بين الاختيار والنموذج
+
             if auth_mode == "🔐 تسجيل دخول / Login":
+                st.markdown("#### 🔐 تسجيل الدخول")
                 st.caption("أدخل اسم المستخدم وكلمة المرور اللي سجّلت فيهم حسابك.")
                 # === إصلاح: لفّ الحقول وزر الدخول داخل st.form. سابقاً كانت الحقول
                 # الثلاثة والزر عناصر منفصلة خارج أي form — كتابة أي حرف بحقل كلمة
@@ -1267,6 +1393,7 @@ if __name__ == "__main__":
                         "كلمة المرور / Password:",
                         key="login_password_input", type="password", max_chars=32
                     )
+                    st.write("")
                     login_submitted = st.form_submit_button("🔐 دخول / Login", use_container_width=True)
                 if login_submitted:
                     success, message = login_teacher(login_username, login_password)
@@ -1278,11 +1405,14 @@ if __name__ == "__main__":
                         st.error(message)
 
             else:
+                st.markdown("#### 🆕 إنشاء حساب جديد")
                 st.caption(f"اختر اسم مستخدم جديد وكلمة مرور. {PASSWORD_REQUIREMENT_MSG}")
-                st.caption(
+                st.info(
                     "🔑 لازم يكون معك مفتاح ترخيص (License Key) استلمته بعد الاشتراك في EWAS على Whop "
-                    "— بتوصلك بإيميل التأكيد بعد الدفع، أو من قسم \"Software\" بحسابك على Whop."
+                    "— بتوصلك بإيميل التأكيد بعد الدفع، أو من قسم \"Software\" بحسابك على Whop.",
+                    icon="🔑",
                 )
+                st.write("")
                 # === نفس إصلاح st.form أعلاه، مطبّق هنا أيضاً على نموذج إنشاء الحساب. ===
                 with st.form("register_form", clear_on_submit=False):
                     register_username = st.text_input("اسم المستخدم الجديد / New Username:", key="register_username_input")
@@ -1298,6 +1428,7 @@ if __name__ == "__main__":
                         "مفتاح الترخيص (License Key) من Whop:",
                         key="register_license_key_input"
                     )
+                    st.write("")
                     register_submitted = st.form_submit_button("🆕 إنشاء الحساب / Create Account", use_container_width=True)
                 if register_submitted:
                     if register_password != register_password_confirm:
@@ -1312,64 +1443,7 @@ if __name__ == "__main__":
                         else:
                             st.error(message)
 
-    # =========================================================================================
-    # === إصلاح أمني مهم: قبل هذا الإصلاح كان بإمكان أي زائر استخدام التطبيق (رفع ورقة
-    # عمل والحصول على تكييف كامل) دون تسجيل دخول على الإطلاق — الكود كان يستخدم اسم
-    # "معلم_عام" كحساب افتراضي لأي زائر غير مسجّل. الآن: أي زائر غير مسجّل يرى فقط
-    # رسالة تطلب منه تسجيل الدخول أو إنشاء حساب من القائمة الجانبية، ولا يصل لأي جزء
-    # من واجهة التكييف الفعلية (رفع الملفات، توليد الأسئلة، إلخ) — st.stop() يوقف
-    # تنفيذ باقي الصفحة هنا مباشرة، لكن القائمة الجانبية (تسجيل الدخول/إنشاء حساب)
-    # تبقى تعمل بشكل طبيعي لأنها نُفّذت بالفعل أعلاه قبل هذا التوقف. ===
-    # =========================================================================================
-    if not st.session_state.teacher_name:
-        st.markdown("""
-            <div style="text-align:center; padding: 60px 20px;">
-                <h2>🔒 يجب تسجيل الدخول أولاً</h2>
-                <p style="font-size:18px;">الرجاء تسجيل الدخول أو إنشاء حساب جديد (بمفتاح ترخيص Whop) من القائمة الجانبية للاستمرار.</p>
-                <p style="font-size:18px; color:#555;">You must log in or create an account (with your Whop license key) from the sidebar to continue.</p>
-            </div>
-        """, unsafe_allow_html=True)
         st.stop()
-
-    # =========================================================================================
-    # === إزالة الخلفية البيضاء من صورة الشعار تلقائياً وتحويلها لشفافة، حتى يندمج الشعار
-    # بصرياً مع خلفية التطبيق بدل الظهور داخل مربع أبيض واضح الحواف. النتيجة مخزّنة
-    # مؤقتاً (cache) حتى لا تُعاد المعالجة في كل rerun. ===
-    # =========================================================================================
-    @st.cache_data(show_spinner=False)
-    def _load_logo_with_transparent_background(path, white_threshold=245):
-        image = Image.open(path).convert("RGBA")
-        datas = image.getdata()
-        new_data = []
-        for item in datas:
-            if item[0] >= white_threshold and item[1] >= white_threshold and item[2] >= white_threshold:
-                new_data.append((255, 255, 255, 0))
-            else:
-                new_data.append(item)
-        image.putdata(new_data)
-        return image
-
-
-    # عرض الشعار الجديد (new_logo.png) بجودة عالية وبخلفية شفافة تندمج مع تصميم التطبيق
-    col_logo1, col_logo2, col_logo3 = st.columns([0.5, 3, 0.5])
-    with col_logo2:
-        logo_loaded = False
-        logo_filenames = [
-            "new_logo.png",
-            "Educ_Worksheet_Adapt_Icon_(Square).png",
-            "logo.png", "logo.jpg", "Logo.png", "Logo.JPG"
-        ]
-        for filename in logo_filenames:
-            if os.path.exists(filename):
-                try:
-                    image = _load_logo_with_transparent_background(filename)
-                except Exception:
-                    image = Image.open(filename)
-                st.image(image, use_container_width=True)
-                logo_loaded = True
-                break
-        if not logo_loaded:
-            st.warning("الرجاء التأكد من رفع صورة الأيقونة باسم new_logo.png في نفس مجلد المشروع.")
 
     # === ملاحظة: إزالة صندوق الشرح الأصفر الكبير أصبحت نهائية — نص "تسجيل الدخول
     # وإدارة الطلاب" أصبح يظهر بجانب سهم ">>" مباشرة عبر CSS (::after) المُعرَّف أعلاه
