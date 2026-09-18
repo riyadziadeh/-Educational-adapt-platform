@@ -606,9 +606,18 @@ if __name__ == "__main__":
             font-family: 'Cairo', -apple-system, sans-serif !important;
         }}
 
-        /* إخفاء أيقونة GitHub وحدها من الشريط العلوي */
-        .stAppToolbar [data-testid="stToolbarActions"] {{
+        /* === إصلاح تجريبي لمربّعي "None" الغامضين أعلى الصفحة: كانت هذه القاعدة تُخفي
+        فقط زر أيقونة GitHub (stToolbarActions) داخل شريط Streamlit العلوي، لكن قد يترك
+        هذا عناصر نصية أخرى تابعة لنفس الشريط (مثل عدّاد أو تسمية فشل تحميلها) ظاهرة
+        بمفردها بدون الأيقونة المرتبطة بها. الآن نُخفي الشريط العلوي الافتراضي بالكامل
+        (stAppToolbar / stToolbar / stDecoration) بدل جزء منه فقط — لا يؤثر على أيقونة
+        فتح القائمة الجانبية المخصّصة (stSidebarCollapsedControl) لأنها عنصر منفصل تماماً
+        ومُنسَّقة بقاعدة أخرى أدناه. ===== */
+        .stAppToolbar,
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"] {{
             display: none !important;
+            visibility: hidden !important;
         }}
 
         /* ===== تكبير وتمييز أيقونة فتح القائمة الجانبية (حساب المعلم) لتصبح واضحة
@@ -1126,12 +1135,22 @@ if __name__ == "__main__":
 
             if auth_mode == "🔐 تسجيل دخول / Login":
                 st.caption("أدخل اسم المستخدم وكلمة المرور اللي سجّلت فيهم حسابك.")
-                login_username = st.text_input("اسم المستخدم / Username:", key="login_username_input")
-                login_password = st.text_input(
-                    "كلمة المرور / Password:",
-                    key="login_password_input", type="password", max_chars=32
-                )
-                if st.button("🔐 دخول / Login", key="login_submit_btn", use_container_width=True):
+                # === إصلاح: لفّ الحقول وزر الدخول داخل st.form. سابقاً كانت الحقول
+                # الثلاثة والزر عناصر منفصلة خارج أي form — كتابة أي حرف بحقل كلمة
+                # المرور تُطلق rerun فوري لكامل الصفحة، وعلى بعض المتصفحات (خصوصاً
+                # الجوال عند ظهور لوحة المفاتيح الافتراضية وتغيّر حجم الشاشة أثناء ذلك)
+                # كان هذا يتسبب أحياناً بعدم ظهور/اختفاء الزر لحظة الكتابة لأن الصفحة
+                # تُعاد رسمتها بالكامل في كل ضغطة. الآن مع st.form: الحقول لا تُطلق أي
+                # rerun أثناء الكتابة إطلاقاً، ويبقى الزر ثابتاً دائماً، ولا يحدث أي
+                # تنفيذ إلا عند الضغط الفعلي على زر الإرسال. ===
+                with st.form("login_form", clear_on_submit=False):
+                    login_username = st.text_input("اسم المستخدم / Username:", key="login_username_input")
+                    login_password = st.text_input(
+                        "كلمة المرور / Password:",
+                        key="login_password_input", type="password", max_chars=32
+                    )
+                    login_submitted = st.form_submit_button("🔐 دخول / Login", use_container_width=True)
+                if login_submitted:
                     success, message = login_teacher(login_username, login_password)
                     if success:
                         st.session_state.teacher_name = login_username.strip()
@@ -1142,16 +1161,19 @@ if __name__ == "__main__":
 
             else:
                 st.caption(f"اختر اسم مستخدم جديد وكلمة مرور. {PASSWORD_REQUIREMENT_MSG}")
-                register_username = st.text_input("اسم المستخدم الجديد / New Username:", key="register_username_input")
-                register_password = st.text_input(
-                    "كلمة المرور (٦ خانات على الأقل: حروف وأرقام) / Password:",
-                    key="register_password_input", type="password", max_chars=32
-                )
-                register_password_confirm = st.text_input(
-                    "تأكيد كلمة المرور / Confirm Password:",
-                    key="register_password_confirm_input", type="password", max_chars=32
-                )
-                if st.button("🆕 إنشاء الحساب / Create Account", key="register_submit_btn", use_container_width=True):
+                # === نفس إصلاح st.form أعلاه، مطبّق هنا أيضاً على نموذج إنشاء الحساب. ===
+                with st.form("register_form", clear_on_submit=False):
+                    register_username = st.text_input("اسم المستخدم الجديد / New Username:", key="register_username_input")
+                    register_password = st.text_input(
+                        "كلمة المرور (٦ خانات على الأقل: حروف وأرقام) / Password:",
+                        key="register_password_input", type="password", max_chars=32
+                    )
+                    register_password_confirm = st.text_input(
+                        "تأكيد كلمة المرور / Confirm Password:",
+                        key="register_password_confirm_input", type="password", max_chars=32
+                    )
+                    register_submitted = st.form_submit_button("🆕 إنشاء الحساب / Create Account", use_container_width=True)
+                if register_submitted:
                     if register_password != register_password_confirm:
                         st.error("كلمة المرور وتأكيدها غير متطابقين.")
                     else:
