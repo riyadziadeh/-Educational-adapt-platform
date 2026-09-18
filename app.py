@@ -10,6 +10,7 @@ import logging
 import secrets as pysecrets
 import sqlite3
 import tempfile
+import textwrap
 import concurrent.futures
 from datetime import datetime, timedelta
 import streamlit as st
@@ -748,7 +749,7 @@ if __name__ == "__main__":
     GOLD = "#F1C40F"           # الذهبي (لون التمييز والعناصر النشطة)
     WHITE = "#FFFFFF"
 
-    st.markdown(f"""
+    st.markdown(textwrap.dedent(f"""
         <style>
         /* استيراد خط Cairo العصري (يدعم العربية بشكل ممتاز) لطابع بصري أحدث لعام 2026 */
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
@@ -1249,7 +1250,7 @@ if __name__ == "__main__":
             letter-spacing: 0.3px;
         }}
         </style>
-    """, unsafe_allow_html=True)
+    """).strip(), unsafe_allow_html=True)
 
     # =========================================================================================
     # === تسجيل دخول مبسّط للمعلم عبر الشريط الجانبي، لفصل بيانات كل معلم (طلابه وسجل
@@ -1341,7 +1342,7 @@ if __name__ == "__main__":
     # هذا النموذج مباشرة. ===
     # =========================================================================================
     if not st.session_state.teacher_name:
-        st.markdown("""
+        st.markdown(textwrap.dedent("""
             <div style="text-align:center; max-width:620px; margin:0 auto; padding: 30px 20px 6px 20px;
                         font-family:'Cairo', -apple-system, sans-serif;">
                 <div style="font-size:48px; line-height:1; margin-bottom:10px;">🔒</div>
