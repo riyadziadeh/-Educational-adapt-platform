@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import time
 import json
 import base64
@@ -267,21 +268,34 @@ def init_db():
 
 DB_INIT_ERROR = None
 try:
-    init_db()
+    # === إصلاح جذري لمشكلة ظهور "None" أعلى الصفحة: init_db() لا تُعيد أي قيمة (لا يوجد
+    # return صريح بها)، وكانت تُستدعى هنا كسطر مستقل (Bare Expression Statement) في أعلى
+    # الملف مباشرة — وهذا بالضبط النمط الذي تلتقطه ميزة "Magic Commands" في ستريمليت
+    # (التي تحوّل تلقائياً آخر سطر تعبير مستقل داخل أي كتلة/try إلى st.write(...)). بما أن
+    # الناتج None، تُعرض الكلمة "None" حرفياً كصندوق نصي — ويحدث هذا في أول سطر يُنفَّذ من
+    # الملف كله (قبل حتى إعداد الصفحة والشعار)، فيظهر أعلى كل شيء، أي "قرب الشعار" تماماً
+    # كما لاحظ المستخدم، وفي كل مرة يُعاد فيها تحميل/تشغيل الصفحة (rerun) لأن ستريمليت
+    # يُنفّذ الملف بالكامل من جديد في كل مرة. الإصلاح: نُسند نتيجة الاستدعاء لمتغيّر (حتى
+    # لو لم نستخدمه) بدل تركه سطراً مستقلاً، فيصبح "إسناد" (Assignment) لا "تعبير مستقل"
+    # (Expression) — والـ Magic Commands لا تتعامل إلا مع التعبيرات المستقلة، فلا يُعرض
+    # أي شيء بعد الآن مهما كانت القيمة المُعادة. نفس الإصلاح طُبِّق على كل استدعاء دالة
+    # أخرى بلا قيمة مُعادة كانت تظهر كسطر مستقل بأي مكان في الملف (راجع بقية التعليقات
+    # المشابهة أدناه) لإزالة المصدر الحقيقي للمشكلة نهائياً بدل الاكتفاء بإخفائها عبر JS. ===
+    _ = init_db()
 except Exception as e:
     # === إصلاح أمني: لا نخزّن نص الاستثناء الخام (قد يحوي اسم مضيف/منفذ/بيانات اتصال
     # قاعدة البيانات) في متغيّر يُعرض لاحقاً لأي زائر قبل تسجيل الدخول. التفاصيل
     # الكاملة تُطبع فقط بسجلات الخادم، وDB_INIT_ERROR يصبح مجرد علم (True/False). ===
-    log_internal_error("فشل تهيئة قاعدة البيانات", e)
+    _ = log_internal_error("فشل تهيئة قاعدة البيانات", e)
     DB_INIT_ERROR = True
     if USE_POSTGRES:
         # فشل الاتصال الفعلي بـ Supabase رغم توفر الإعداد — نرجع تلقائياً للتخزين
         # المحلي المؤقت بدل أن ينهار التطبيق بالكامل
         USE_POSTGRES = False
         try:
-            init_db()
+            _ = init_db()
         except Exception as e2:
-            log_internal_error("فشل تهيئة قاعدة البيانات المحلية الاحتياطية أيضاً", e2)
+            _ = log_internal_error("فشل تهيئة قاعدة البيانات المحلية الاحتياطية أيضاً", e2)
 
 
 # =========================================================================================
@@ -573,7 +587,27 @@ def parse_ai_sections(full_text):
         answer_key = []
 
     if vocab_part.strip():
-        vocab_words = [w.strip() for w in vocab_part.strip().split(",") if w.strip()][:6]
+        # === إصلاح جذري لموثوقية بطاقات PECS (كانت تفشل أو تنتج بطاقة واحدة مشوّهة بدل
+        # ٤-٦ بطاقات مفهومة): الكود القديم كان يقسّم النص فقط على الفاصلة اللاتينية ","،
+        # بينما النموذج يكتب بالعربية وكان أحياناً يستخدم الفاصلة العربية "،" أو الفاصلة
+        # المنقوطة العربية/اللاتينية أو يضع كل كلمة بسطر مستقل (خصوصاً مع الاستدعاء
+        # الاحتياطي _generate_structured_extras). في أي من هذه الحالات كانت split(",")
+        # تعيد "كلمة" واحدة ضخمة تضم كل المفردات ملتصقة ببعضها بدل قائمة فعلية — وهذا هو
+        # السبب الجذري الحقيقي وراء عدم موثوقية بطاقات PECS التي أبلغ عنها المستخدم، وليس
+        # مجرد فشل عرضي في توليد الصور. الحل: نقسم على أي فاصل شائع معاً (فاصلة عربية أو
+        # لاتينية، فاصلة منقوطة عربية أو لاتينية، أو سطر جديد)، ثم ننظّف كل عنصر من أرقام/
+        # نقاط/شرطات/أقواس/علامات اقتباس أو نجمية Markdown قد يضيفها النموذج في بداية أو
+        # نهاية كل عنصر (تعداد تلقائي مثلاً "1. كلمة" أو "- كلمة")، ونتجاهل أي عنصر فارغ
+        # أو غير واقعي كـ"كلمة مفتاحية" (جملة كاملة طويلة) لأن بطاقة PECS الواحدة مصمَّمة
+        # لكلمة أو عبارة قصيرة واحدة فقط، وليست جملة. ===
+        raw_pieces = re.split(r"[,،;؛\n]+", vocab_part.strip())
+        cleaned_vocab_words = []
+        for piece in raw_pieces:
+            word = piece.strip().strip("*`\"'“”()[]{}.،-–— ").strip()
+            word = word.lstrip("0123456789٠١٢٣٤٥٦٧٨٩.-) ").strip()
+            if word and len(word) <= 30 and len(word.split()) <= 4:
+                cleaned_vocab_words.append(word)
+        vocab_words = cleaned_vocab_words[:6]
 
     return main_text.strip(), answer_key, vocab_words
 
@@ -1289,13 +1323,14 @@ if __name__ == "__main__":
                 st.session_state.teacher_name = ""
                 st.rerun()
         else:
-            # === إصلاح: نموذج تسجيل الدخول/إنشاء الحساب انتقل من الشريط الجانبي إلى
-            # منتصف الصفحة الرئيسية مباشرة (أنظر أسفل قسم "يجب تسجيل الدخول أولاً").
-            # السبب: على شاشات الموبايل الشريط الجانبي يكون مطوياً تلقائياً وبدون زر
-            # واضح لفتحه في بعض المتصفحات، فكان المستخدم يرى فقط رسالة "يجب تسجيل
-            # الدخول" بدون أي طريقة فعلية للوصول لنموذج الدخول. الآن النموذج نفسه
-            # جزء من الصفحة الرئيسية، ظاهر مباشرة بدون الحاجة لفتح أي قائمة جانبية. ===
-            st.caption("👈 نموذج تسجيل الدخول / إنشاء الحساب موجود في وسط الصفحة الرئيسية.")
+            # === إصلاح: بوابة دخول ناعمة (Soft Gate) — يمكنك تصفّح الصفحة الرئيسية
+            # كاملة بحرية بدون تسجيل دخول (معاينة/تجربة). نموذج الدخول/التسجيل يظهر
+            # تلقائياً في منتصف الصفحة الرئيسية فقط عند الضغط على زر "🚀 Start" لبدء
+            # التكييف الفعلي بالذكاء الاصطناعي — وهو الإجراء الوحيد الذي يتطلب حساباً. ===
+            st.caption(
+                "👈 يمكنك تصفّح الصفحة بدون تسجيل دخول. سيظهر نموذج الدخول/إنشاء "
+                "الحساب تلقائياً عند الضغط على زر \"🚀 Start\" لبدء التكييف الفعلي."
+            )
 
     # =========================================================================================
     # === إزالة الخلفية البيضاء من صورة الشعار تلقائياً وتحويلها لشفافة، حتى يندمج الشعار
@@ -1340,18 +1375,35 @@ if __name__ == "__main__":
             if not logo_loaded:
                 st.warning("الرجاء التأكد من رفع صورة الأيقونة باسم new_logo.png في نفس مجلد المشروع.")
 
-    _render_logo()
+    # === إصلاح "None" (راجع الشرح المفصّل أعلى استدعاء init_db()): إسناد الناتج لمتغيّر
+    # بدل تركه سطراً مستقلاً يمنع ميزة Magic Commands من عرض None هنا — وهذا هو تحديداً
+    # الموضع الذي وصفه المستخدم بأن الصندوق يظهر "قرب الشعار" مباشرة. ===
+    _ = _render_logo()
 
     # =========================================================================================
-    # === إصلاح أمني مهم: قبل هذا الإصلاح كان بإمكان أي زائر استخدام التطبيق (رفع ورقة
-    # عمل والحصول على تكييف كامل) دون تسجيل دخول على الإطلاق — الكود كان يستخدم اسم
-    # "معلم_عام" كحساب افتراضي لأي زائر غير مسجّل. الآن: أي زائر غير مسجّل يرى نموذج
-    # تسجيل دخول/إنشاء حساب واضح في وسط الصفحة الرئيسية مباشرة (وليس في الشريط الجانبي
-    # فقط — لأن الشريط الجانبي على الموبايل يكون مطوياً بدون طريقة واضحة لفتحه)، ولا
-    # يصل لأي جزء من واجهة التكييف الفعلية. st.stop() يوقف تنفيذ باقي الصفحة بعد عرض
-    # هذا النموذج مباشرة. ===
+    # === إصلاح جوهري لتجربة الاستخدام (نظام "بوابة دخول ناعمة" Soft Gate بدل البوابة
+    # الصارمة القديمة): سابقاً كان أي زائر غير مسجّل يُحجَب فوراً عن الصفحة بأكملها (حتى
+    # عن مجرد تصفّح الواجهة ورؤية خيارات التكييف المتاحة) عبر st.stop() هنا أعلى الصفحة
+    # مباشرة. الآن: أي زائر (مسجّل أو لا) يستطيع تصفّح الصفحة الرئيسية كاملة بحرية —
+    # الشريط العلوي، شبكة اختيار المادة/المستوى/الوضع، رفع الملف، إدارة الطالب، إلخ —
+    # كمعاينة/تجربة (Preview) دون أي حاجة لتسجيل الدخول. البوابة الفعلية انتقلت لتصبح
+    # عند نقطة الفعل الحقيقية فقط: لحظة الضغط على زر "🚀 Start" الذي يشغّل استدعاء
+    # الذكاء الاصطناعي المدفوع فعلياً — راجع الدالة _render_login_gate أدناه ونقطة
+    # استدعائها عند معالجة start_clicked لاحقاً في الملف. هذا يحقق طلب المستخدم بالسماح
+    # بالتصفح كمعاينة دون تسجيل، مع ضمان أمني صارم بألا يصل أي زائر غير مسجّل لاستدعاء
+    # الذكاء الاصطناعي الفعلي أو للحد الشهري (MONTHLY_WORKSHEET_LIMIT) أو لتسجيل أي شيء
+    # بقاعدة البيانات (save_worksheet_history) — تلك الاستدعاءات الثلاثة كلها محمية الآن
+    # بشرط صريح إضافي `bool(st.session_state.teacher_name)` عند نقطة التنفيذ الفعلية،
+    # وليس فقط بإخفاء الواجهة، حتى لا يصبح أي تعديل مستقبلي بترتيب الواجهة ثغرة أمنية. ===
     # =========================================================================================
-    if not st.session_state.teacher_name:
+    def _render_login_gate():
+        """
+        يعرض نفس محتوى بوابة تسجيل الدخول/إنشاء الحساب المصمَّم مسبقاً (قفل + نموذجا
+        الدخول والتسجيل)، لكن الآن يُستدعى فقط عند الحاجة الفعلية (محاولة بدء التكييف
+        دون تسجيل دخول) بدل أن يحجب الصفحة بأكملها من البداية. لا تستدعي هذه الدالة
+        st.stop() إطلاقاً — فقط تعرض النموذج، والمتحكم بمنع تنفيذ التكييف الفعلي هو
+        الشرط الصريح عند نقطة استدعاء الذكاء الاصطناعي (وليس هذه الدالة نفسها).
+        """
         # === إصلاح جذري ونهائي لمشكلة ظهور وسوم HTML كنص خام: بدل الاعتماد على
         # st.markdown مع unsafe_allow_html (اللي يمرّ عبر محلّل Markdown ويمكن يُخطئ
         # ويتعامل مع أي سطر فيه مسافة بادئة أو سطر فاضي كـ "كود نصي" بدل HTML فعلي)،
@@ -1472,27 +1524,42 @@ if __name__ == "__main__":
                         else:
                             st.error(message)
 
-        st.stop()
-
     # === ملاحظة: إزالة صندوق الشرح الأصفر الكبير أصبحت نهائية — نص "تسجيل الدخول
     # وإدارة الطلاب" أصبح يظهر بجانب سهم ">>" مباشرة عبر CSS (::after) المُعرَّف أعلاه
     # في كتلة <style>، وهو أسلوب أكثر ثباتاً من الاعتماد على سكربت JS خارجي لأنه لا
     # يحتاج أي وصول لعناصر الصفحة الأصلية من داخل إطار iframe منفصل. ===
 
-    # شريط علوي كحلي بأسلوب "شريط البحث" الموجود في التطبيقات، للزينة وربط الهوية البصرية بالتصميم المطلوب
-    st.markdown(textwrap.dedent(f"""
-        <div class="app-topbar">
-            <div class="search-fake">🔍 &nbsp; اختر بيانات ورقة العمل من الشبكة أدناه</div>
+    # شريط علوي كحلي بأسلوب "شريط البحث" + العنوان الرئيسي تحت الشعار — عبر components.html
+    # (بدل st.markdown) لضمان أنها تُعرض كـ HTML حقيقي دائماً بدون أي احتمال لظهورها كنص
+    # خام، وبأنماط مضمّنة (inline) بدل الاعتماد على كلاسات CSS خارجية، لأن هذا المحتوى
+    # الآن يُرسم داخل iframe مستقل لا يرى قواعد <style> الموجودة بصفحة التطبيق الرئيسية.
+    components.html(textwrap.dedent(f"""
+        <div id="ewas-topbar-wrap" style="font-family:'Cairo', -apple-system, sans-serif; box-sizing: border-box;">
+            <div style="background: linear-gradient(120deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
+                        border-radius: 26px; padding: 18px 22px; margin-bottom: 24px;
+                        box-shadow: 0px 10px 30px rgba(16,27,45,0.22);">
+                <div style="background-color: rgba(255,255,255,0.92); border-radius: 16px;
+                            padding: 12px 18px; color: #7d8a9a; font-weight: 700;
+                            text-align: right; font-size: 15px;">
+                    🔍 &nbsp; اختر بيانات ورقة العمل من الشبكة أدناه
+                </div>
+            </div>
+            <div style="text-align: center;">
+                <h1 style="font-size: 28px; margin: 0; font-weight: 900; color: {NAVY_DARK};">نظام تكييف أوراق العمل التربوية</h1>
+                <h2 style="font-size: 22px; margin-top: 5px; font-weight: 900; color: {BLUE_ACCENT};">Educational Worksheet Adaptation System</h2>
+            </div>
         </div>
-    """).strip(), unsafe_allow_html=True)
-
-    # العنوان الرئيسي للنظام تحت الشعار مباشرة
-    st.markdown(textwrap.dedent("""
-        <div style="text-align: center;">
-            <h1 style="font-size: 28px; margin-bottom: 0; font-weight: 900;">نظام تكييف أوراق العمل التربوية</h1>
-            <h2 style="font-size: 22px; margin-top: 5px; font-weight: 900;">Educational Worksheet Adaptation System</h2>
-        </div>
-    """).strip(), unsafe_allow_html=True)
+        <script>
+        function _ewasTopbarResize() {{
+            var h = document.getElementById('ewas-topbar-wrap').scrollHeight + 15;
+            if (window.frameElement) {{ window.frameElement.style.height = h + 'px'; }}
+            window.parent.postMessage({{type: 'streamlit:setFrameHeight', height: h}}, '*');
+        }}
+        window.addEventListener('load', _ewasTopbarResize);
+        _ewasTopbarResize();
+        setTimeout(_ewasTopbarResize, 200);
+        </script>
+    """).strip(), height=220, scrolling=False)
 
     st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغة المختارة مع خيارات التحميل المتعددة.")
 
@@ -1887,14 +1954,16 @@ if __name__ == "__main__":
         # ---------------- أزرار حفظ / تحديث بيانات الطالب (تُستخدم بعد اختيار كل الحقول أعلاه) ----------------
         if student_choice == student_names_options[1] and new_student_name.strip():
             if st.button("💾 حفظ الطالب الجديد / Save New Student", key="save_new_student_btn"):
-                save_student(current_teacher, new_student_name.strip(), selected_grade, selected_system,
-                             selected_category, selected_condition)
+                # === إصلاح "None" (راجع الشرح أعلى init_db()): إسناد الناتج لمتغيّر بدل
+                # تركه سطراً مستقلاً يمنع Magic Commands من عرض None هنا. ===
+                _ = save_student(current_teacher, new_student_name.strip(), selected_grade, selected_system,
+                                  selected_category, selected_condition)
                 st.success("تم حفظ بيانات الطالب بنجاح.")
                 st.rerun()
         elif selected_student_record:
             if st.button("💾 تحديث بيانات الطالب / Update Student Info", key="update_student_btn"):
-                update_student(selected_student_record["id"], selected_grade, selected_system,
-                                selected_category, selected_condition)
+                _ = update_student(selected_student_record["id"], selected_grade, selected_system,
+                                    selected_category, selected_condition)
                 st.success("تم تحديث بيانات الطالب.")
 
         # =====================================================================================
@@ -2004,7 +2073,7 @@ if __name__ == "__main__":
                 # === إصلاح أمني: لا نعرض نص الاستثناء الخام للمستخدم (قد يكشف تفاصيل
                 # داخلية عن مكتبات الخادم)، بل رسالة عامة واضحة، مع تسجيل التفصيل الكامل
                 # بسجلات الخادم فقط لتشخيصه لاحقاً. ===
-                log_internal_error(f"فشل قراءة الملف المرفوع ({uploaded_file.name})", e)
+                _ = log_internal_error(f"فشل قراءة الملف المرفوع ({uploaded_file.name})", e)
                 st.error(
                     "⚠️ حدث خطأ أثناء قراءة هذا الملف. تأكد أنه ملف PDF أو Word (.docx) أو نصي (.txt) سليم "
                     "وغير تالف أو محمي بكلمة مرور، ثم أعد المحاولة."
@@ -2507,7 +2576,10 @@ if __name__ == "__main__":
                         design_url = job["result"]["design"]["url"]
                         return design_url, None
                     if job["status"] == "failed":
-                        return None, f"فشل إنشاء التصميم عبر Canva: {job.get('error')}"
+                        # === إصلاح "None": job.get('error') بلا قيمة افتراضية كان يُعيد None
+                        # فعلياً حين لا يُرجع Canva تفصيل خطأ إضافي، فتظهر الرسالة للمعلم حرفياً
+                        # "فشل إنشاء التصميم عبر Canva: None" بدل رسالة مفهومة. ===
+                        return None, f"فشل إنشاء التصميم عبر Canva: {job.get('error') or 'سبب غير معروف'}"
 
                 return None, "استغرق إنشاء تصميم Canva وقتاً أطول من المتوقع، يرجى المحاولة لاحقاً."
             except Exception as e:
@@ -2981,22 +3053,59 @@ if __name__ == "__main__":
         with start_btn_container:
             start_clicked = st.button("🚀 Start", use_container_width=True)
 
-        # === سقف الاستخدام الشهري المرتبط بالاشتراك على Whop: يُطبّق فقط على الحسابات
-        # المرتبطة بمفتاح ترخيص (الحسابات القديمة بدون مفتاح تبقى بلا قيود). ===
-        _quota_blocked_now = False
-        if start_clicked:
-            _current_teacher_for_quota = st.session_state.get("teacher_name", "")
-            if _current_teacher_for_quota:
-                _current_month_usage = get_monthly_usage_count(_current_teacher_for_quota)
-                if _current_month_usage >= MONTHLY_WORKSHEET_LIMIT:
-                    _quota_blocked_now = True
-                    st.error(
-                        f"⚠️ لقد استخدمت الحد الأقصى المسموح به هذا الشهر "
-                        f"({MONTHLY_WORKSHEET_LIMIT} ورقة عمل) ضمن اشتراكك الحالي. "
-                        "سيُعاد تعيين الحد أول الشهر القادم، أو تواصل معنا لترقية الباقة."
-                    )
+        # =================================================================================
+        # === بوابة الدخول الفعلية (Soft Gate): هذه هي النقطة الوحيدة التي يُسمح عندها
+        # فعلياً باستدعاء الذكاء الاصطناعي المدفوع. لو ضغط زائر غير مسجّل على "Start"،
+        # لا نُكمل التوليد إطلاقاً — بدلاً من ذلك نعرض نفس نموذج الدخول/التسجيل المصمَّم
+        # مسبقاً هنا مباشرة (مكان الضغط على الزر)، ونُبقي `show_login_gate` مفعّلاً عبر
+        # session_state حتى لو أعاد ستريمليت رسم الصفحة لأي سبب آخر (مثل تغيير خيار
+        # بالشبكة أعلاه)، بدل أن يختفي النموذج فجأة بعد أول rerun تالٍ. ===
+        # =================================================================================
+        if "show_login_gate" not in st.session_state:
+            st.session_state.show_login_gate = False
 
-        if start_clicked and not _quota_blocked_now:
+        if start_clicked and not st.session_state.teacher_name:
+            st.session_state.show_login_gate = True
+
+        if st.session_state.teacher_name:
+            # المستخدم سجّل دخوله (سواء الآن أو سابقاً) — لا داعي لإبقاء بوابة الدخول ظاهرة
+            st.session_state.show_login_gate = False
+
+        # === سقف الاستخدام الشهري المرتبط بالاشتراك على Whop: يُطبّق فقط على الحسابات
+        # المرتبطة بمفتاح ترخيص (الحسابات القديمة بدون مفتاح تبقى بلا قيود). لاحظ أن هذا
+        # الشرط بأكمله (وبالتالي استدعاء الذكاء الاصطناعي أدناه) لا يُنفَّذ إطلاقاً إلا
+        # ضمن `if st.session_state.teacher_name:` — أي زائر غير مسجّل لا يصل لهذا الفحص
+        # ولا لاستدعاء API ولا لتسجيل أي استخدام بقاعدة البيانات مهما حدث. ===
+        _quota_blocked_now = False
+        if start_clicked and st.session_state.teacher_name:
+            _current_teacher_for_quota = st.session_state.teacher_name
+            _current_month_usage = get_monthly_usage_count(_current_teacher_for_quota)
+            if _current_month_usage >= MONTHLY_WORKSHEET_LIMIT:
+                _quota_blocked_now = True
+                st.error(
+                    f"⚠️ لقد استخدمت الحد الأقصى المسموح به هذا الشهر "
+                    f"({MONTHLY_WORKSHEET_LIMIT} ورقة عمل) ضمن اشتراكك الحالي. "
+                    "سيُعاد تعيين الحد أول الشهر القادم، أو تواصل معنا لترقية الباقة."
+                )
+
+        if st.session_state.show_login_gate and not st.session_state.teacher_name:
+            st.warning(
+                "🔒 يجب تسجيل الدخول بحسابك، أو إنشاء حساب جديد بمفتاح ترخيص Whop، "
+                "قبل بدء تكييف ورقة العمل بالذكاء الاصطناعي. يمكنك متابعة تصفّح باقي "
+                "خيارات الصفحة بدون تسجيل، لكن التكييف الفعلي يتطلب حساباً مفعّلاً."
+            )
+            _render_login_gate()
+
+        # === الشرط الأمني الحاسم: حتى لو حدث أي خطأ منطقي أعلاه بترتيب الأعلام (flags)،
+        # هذا الشرط النهائي (وليس أي علم/متغيّر وسيط) هو ما يقرر فعلياً هل يُستدعى الذكاء
+        # الاصطناعي المدفوع أم لا — ويشترط صراحة teacher_name حقيقياً (وليس فارغاً). ===
+        _proceed_with_generation = (
+            start_clicked
+            and not _quota_blocked_now
+            and bool(st.session_state.teacher_name)
+        )
+
+        if _proceed_with_generation:
             # إعادة تصفير دورة العمل بالكامل عند بدء تكييف جديد
             st.session_state.adapted_text = None
             st.session_state.adapted_text_draft = None
@@ -3131,9 +3240,12 @@ if __name__ == "__main__":
             else:
                 st.error("عذراً، تعذّر الاتصال بخدمة الذكاء الاصطناعي حالياً. يرجى المحاولة لاحقاً، أو التأكد من صلاحية مفتاح GOOGLE_API_KEY.")
                 if last_error:
-                    # === إصلاح أمني: التفصيل التقني الكامل (قد يحوي أجزاء من الطلب المرسل
-                    # لجوجل) يُطبع بسجلات الخادم فقط، ولا يُعرض للمعلم كما كان سابقاً. ===
-                    log_internal_error("فشل توليد ورقة العمل عبر كل النماذج المتاحة", last_error)
+                    # === إصلاح أمني + إصلاح "None" (راجع الشرح المفصّل أعلى init_db()): هذا
+                    # الاستدعاء كان آخر (وحيد) سطر داخل كتلة if last_error — بالضبط النمط الذي
+                    # تحوّله Magic Commands في ستريمليت تلقائياً إلى st.write(النتيجة)، والنتيجة
+                    # هنا None لأن log_internal_error لا تُعيد أي قيمة، فكانت تظهر "None" مباشرة
+                    # تحت رسالة الخطأ. الإسناد لمتغيّر يمنع ذلك تماماً. ===
+                    _ = log_internal_error("فشل توليد ورقة العمل عبر كل النماذج المتاحة", last_error)
 
         # =====================================================================================
         # === خطوة مراجعة وتعديل يدوي قبل التصدير النهائي — النص لا يذهب مباشرة لتوليد
@@ -3165,7 +3277,8 @@ if __name__ == "__main__":
 
             if st.session_state.just_generated:
                 if enable_ding:
-                    play_ready_ding()
+                    # === إصلاح "None" (راجع الشرح أعلى init_db()) ===
+                    _ = play_ready_ding()
                 st.session_state.just_generated = False
 
             st.markdown("### ورقة العمل المطورة والمكيفة / Adapted Worksheet Output:")
@@ -3215,7 +3328,8 @@ if __name__ == "__main__":
                     selected_student_record["full_name"] if selected_student_record
                     else (new_student_name.strip() if new_student_name.strip() else "بدون ربط بطالب")
                 )
-                save_worksheet_history(
+                # === إصلاح "None" (راجع الشرح أعلى init_db()) ===
+                _ = save_worksheet_history(
                     current_teacher, _history_student_id, _history_student_name,
                     selected_subject, selected_grade, selected_level, mode_items[mode_idx][1],
                     current_text, json.dumps(st.session_state.answer_key, ensure_ascii=False)
