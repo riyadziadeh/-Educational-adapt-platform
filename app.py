@@ -1533,8 +1533,27 @@ if __name__ == "__main__":
     # (بدل st.markdown) لضمان أنها تُعرض كـ HTML حقيقي دائماً بدون أي احتمال لظهورها كنص
     # خام، وبأنماط مضمّنة (inline) بدل الاعتماد على كلاسات CSS خارجية، لأن هذا المحتوى
     # الآن يُرسم داخل iframe مستقل لا يرى قواعد <style> الموجودة بصفحة التطبيق الرئيسية.
+    # === إصلاح تراكب العنوان الإنجليزي مع فقرة "قم برفع ملف..." على الشاشات الضيقة (موبايل):
+    # كانت المشكلة أن ارتفاع الـ iframe يُحسب مرة أو مرتين بعيد تحميل الصفحة فقط (load +
+    # 200ms)، لكن على الموبايل يلتف العنوان العربي (h1) والعنوان الإنجليزي (h2) كل واحد
+    # منهم على سطرين (بدل سطر واحد كما بالشاشات الواسعة)، فيصبح الارتفاع الحقيقي أكبر بكثير
+    # من "220" الثابتة المُمررة كبداية، وإن فشلت رسالة postMessage بالوصول بالوقت المناسب
+    # (أو قبل اكتمال التفاف النص) يبقى الـ iframe بارتفاعه القديم فيغطّي عليه العنصر اللي
+    # بعده. الحل: (1) تصغير الخط تلقائياً على الشاشات الضيقة عبر media query حتى يقل احتمال
+    # الالتفاف لسطرين، (2) رفع الارتفاع الافتراضي الأولي ليتحمل حالة الالتفاف الأسوأ حتى لو
+    # فشلت إعادة الحساب، (3) إعادة حساب الارتفاع بشكل متكرر وأكثر ثباتاً (ResizeObserver +
+    # عدة محاولات مؤجلة) بدل الاعتماد على تشغيلة أو تشغيلتين فقط. ===
     components.html(textwrap.dedent(f"""
-        <div id="ewas-topbar-wrap" style="font-family:'Cairo', -apple-system, sans-serif; box-sizing: border-box;">
+        <style>
+            #ewas-topbar-wrap {{ font-family:'Cairo', -apple-system, sans-serif; box-sizing: border-box; }}
+            #ewas-topbar-wrap h1 {{ font-size: 28px; margin: 0; font-weight: 900; color: {NAVY_DARK}; }}
+            #ewas-topbar-wrap h2 {{ font-size: 22px; margin-top: 5px; font-weight: 900; color: {BLUE_ACCENT}; }}
+            @media (max-width: 480px) {{
+                #ewas-topbar-wrap h1 {{ font-size: 20px; }}
+                #ewas-topbar-wrap h2 {{ font-size: 15px; }}
+            }}
+        </style>
+        <div id="ewas-topbar-wrap">
             <div style="background: linear-gradient(120deg, {NAVY_DARK} 0%, {BLUE_ACCENT} 100%);
                         border-radius: 26px; padding: 18px 22px; margin-bottom: 24px;
                         box-shadow: 0px 10px 30px rgba(16,27,45,0.22);">
@@ -1545,21 +1564,25 @@ if __name__ == "__main__":
                 </div>
             </div>
             <div style="text-align: center;">
-                <h1 style="font-size: 28px; margin: 0; font-weight: 900; color: {NAVY_DARK};">نظام تكييف أوراق العمل التربوية</h1>
-                <h2 style="font-size: 22px; margin-top: 5px; font-weight: 900; color: {BLUE_ACCENT};">Educational Worksheet Adaptation System</h2>
+                <h1>نظام تكييف أوراق العمل التربوية</h1>
+                <h2>Educational Worksheet Adaptation System</h2>
             </div>
         </div>
         <script>
         function _ewasTopbarResize() {{
-            var h = document.getElementById('ewas-topbar-wrap').scrollHeight + 15;
+            var h = document.getElementById('ewas-topbar-wrap').scrollHeight + 30;
             if (window.frameElement) {{ window.frameElement.style.height = h + 'px'; }}
             window.parent.postMessage({{type: 'streamlit:setFrameHeight', height: h}}, '*');
         }}
         window.addEventListener('load', _ewasTopbarResize);
+        window.addEventListener('resize', _ewasTopbarResize);
         _ewasTopbarResize();
-        setTimeout(_ewasTopbarResize, 200);
+        [50, 150, 300, 600, 1000].forEach(function(t) {{ setTimeout(_ewasTopbarResize, t); }});
+        if (window.ResizeObserver) {{
+            new ResizeObserver(_ewasTopbarResize).observe(document.getElementById('ewas-topbar-wrap'));
+        }}
         </script>
-    """).strip(), height=220, scrolling=False)
+    """).strip(), height=280, scrolling=False)
 
     st.write("قم برفع ملف ورقة العمل وسيتم تحليلها وتكييفها تلقائياً باللغة المختارة مع خيارات التحميل المتعددة.")
 
